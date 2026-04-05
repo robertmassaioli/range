@@ -40,26 +40,46 @@ With GHC < 8 support gone:
 - `Data/Ranges.hs`: Remove the `#if !MIN_VERSION_base(4,8,0)` guard around `import Control.Applicative`.
 - `Data/Range/Algebra/Internal.hs`: Remove the `#if MIN_VERSION_base(4,9,0)` guards around `Eq1`/`Show1` instances — these are always available on GHC 9.10.
 
-### 4. Update `bitbucket-pipelines.yml`
+### 4. Replace `bitbucket-pipelines.yml` with GitHub Actions
 
-Replace the multi-GHC Cabal-based pipeline with a single Stack-based step:
+Delete `bitbucket-pipelines.yml` and add `.github/workflows/ci.yml`:
 
 ```yaml
-image: fpco/stack-build:lts-24.36
+name: CI
 
-pipelines:
-  default:
-    - step:
-        name: "Build and Test"
-        caches:
-          - stack-root
-          - stack-work
-        script:
-          - stack setup
-          - stack build --test
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: haskell-actions/setup@v2
+        with:
+          enable-stack: true
+          stack-version: latest
+
+      - name: Cache Stack
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.stack
+            .stack-work
+          key: ${{ runner.os }}-stack-${{ hashFiles('stack.yaml.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-stack-
+
+      - name: Build
+        run: stack build --test --no-run-tests
+
+      - name: Test
+        run: stack test
 ```
-
-Or, if Bitbucket Pipelines is no longer in use, consider replacing with GitHub Actions.
 
 ### 5. Add `stack.yaml.lock` to version control
 
