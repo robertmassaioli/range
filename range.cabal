@@ -27,7 +27,8 @@ description:         The range library alows the use of performant and versatile
                      with "Data.Range"; it contains the basics of this library that meet most use
                      cases.
 
-homepage:            https://bitbucket.org/robertmassaioli/range
+homepage:            https://github.com/robertmassaioli/range
+bug-reports:         https://github.com/robertmassaioli/range/issues
 
 -- The license under which the package is released.
 license:             MIT
@@ -51,6 +52,10 @@ build-type:          Simple
 
 -- Constraint on the version of Cabal needed to build this package.
 cabal-version:       >=1.10
+
+source-repository head
+  type:     git
+  location: https://github.com/robertmassaioli/range
 
 
 library
