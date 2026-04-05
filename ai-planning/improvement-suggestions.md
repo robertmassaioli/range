@@ -1,5 +1,7 @@
 # Codebase Improvement Suggestions
 
+Items marked **[DONE]** have been implemented.
+
 ## 1. Missing set-theoretic property tests
 
 The `Test/Range.hs` tests cover almost no algebraic laws at the `[Range a]` level — they only test `invert` and a few membership checks. The internal `RangeMerge` layer has good De Morgan / identity coverage, but the public API surface lacks properties like:
@@ -15,9 +17,11 @@ These are the contracts users rely on and they're currently untested at the publ
 
 In `Test/Range.hs:70-71`, the span generator always uses `+=+` (inclusive/inclusive). `Exclusive` bounds are never exercised in any generated `SpanRange`. This means properties involving exclusive bounds are only tested at the `RangeMerge` level (via `maybeBound` in `RangeMerge.hs`), not through the public API.
 
-## 3. No benchmark suite
+## 3. No benchmark suite **[DONE]**
 
 The README prominently advertises performance as the primary value proposition (with a GHCi timing comparison in the docs), but there's no `criterion` or `tasty-bench` benchmark suite in the cabal file. Given that performance is a selling point, a suite testing `inRanges` on large lists of ranges, `mergeRanges` on pathological inputs, and `intersection` on dense overlapping ranges would both protect against regressions and substantiate the performance claims.
+
+Implemented in `Bench/Range.hs` using `tasty-bench`: 55 benchmarks across point queries, set operations, construction/conversion, and algebra expression trees. `NFData` instances added to `Range`, `Bound`, `BoundType`, and `OverlapType`. CI uploads `bench-results.csv` as an artifact. Run with `stack bench`.
 
 ## 4. Parser only supports non-negative integers with `Read`
 
@@ -42,6 +46,8 @@ The README prominently advertises performance as the primary value proposition (
 ## 9. No `Ord` instance for `Range`
 
 `Range a` has `Eq` and `Show` but no `Ord`, `NFData`, or `Hashable` instances. `Ord` is the most consequential missing one — users who want to store ranges in `Set` or as `Map` keys, or sort a list of ranges for display, currently can't without defining orphan instances themselves. A derived or manual `Ord` would be a non-breaking addition.
+
+`NFData` was added as part of item 3 (benchmark suite). `Ord` and `Hashable` remain unimplemented.
 
 ## 10. `Data.Range.Parser` has no tests
 
