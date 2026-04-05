@@ -1,4 +1,5 @@
-# Development and Build 
+# Development and Build
+/Setup.hs
 /dist
 /dist-newstyle
 /cabal-dev
