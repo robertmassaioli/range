@@ -28,7 +28,16 @@ jobs:
             ${{ runner.os }}-stack-
 
       - name: Build
-        run: stack build --test --no-run-tests
+        run: stack build --test --bench --no-run-tests --no-run-benchmarks
 
       - name: Test
         run: stack test
+
+      - name: Benchmark
+        run: stack bench --benchmark-arguments '--csv bench-results.csv +RTS -T'
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmarks
+          path: bench-results.csv

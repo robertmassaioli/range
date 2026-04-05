@@ -1,23 +1,33 @@
 {-# LANGUAGE Safe #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 -- | The Data module for common data types within the code.
 module Data.Range.Data where
 
+import Control.DeepSeq (NFData)
+import GHC.Generics (Generic)
+
 data OverlapType = Separate | Overlap | Adjoin
-   deriving (Eq, Show)
+   deriving (Eq, Show, Generic)
+
+instance NFData OverlapType
 
 -- | Represents a type of boundary.
-data BoundType 
+data BoundType
    = Inclusive -- ^ The value at the boundary should be included in the bound.
    | Exclusive -- ^ The value at the boundary should be excluded in the bound.
-   deriving (Eq, Show)
+   deriving (Eq, Show, Generic)
 
--- | Represents a bound at a particular value with a 'BoundType'. 
+instance NFData BoundType
+
+-- | Represents a bound at a particular value with a 'BoundType'.
 -- There is no implicit understanding if this is a lower or upper bound, it could be either.
 data Bound a = Bound
    { boundValue :: a          -- ^ The value at the edge of this bound.
    , boundType :: BoundType   -- ^ The type of bound. Should be 'Inclusive' or 'Exclusive'.
-   } deriving (Eq, Show)
+   } deriving (Eq, Show, Generic)
+
+instance NFData a => NFData (Bound a)
 
 instance Functor Bound where
    fmap f (Bound v vType) = Bound (f v) vType
@@ -34,7 +44,9 @@ data Range a
    | LowerBoundRange (Bound a)      -- ^ Represents a range with a finite lower bound and an infinite upper bound.
    | UpperBoundRange (Bound a)      -- ^ Represents a range with an infinite lower bound and a finite upper bound.
    | InfiniteRange                  -- ^ Represents an infinite range over all values.
-   deriving(Eq)
+   deriving (Eq, Generic)
+
+instance NFData a => NFData (Range a)
 
 instance Functor Range where
    fmap f (SingletonRange x) = SingletonRange . f $ x
