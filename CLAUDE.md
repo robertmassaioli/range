@@ -16,6 +16,12 @@ stack build --test --no-run-tests
 
 # Load the test suite in a REPL for interactive testing
 stack ghci range:test-range
+
+# Run the benchmark suite
+stack bench
+
+# Run benchmarks and save results to CSV
+stack bench --benchmark-arguments '--csv bench-results.csv'
 ```
 
 ## Architecture

@@ -1,8 +1,5 @@
 # range - by Robert Massaioli
 
-![build-status](https://bitbucket-badges.atlassian.io/badge/robertmassaioli/range.svg)
-![haskell](https://img.shields.io/badge/haskell-safe-green.svg)
-
 The range library is written in Haskell and it's purpose is to make it easy to deal with
 ranges. For example you may have the following ranges:
 
@@ -54,6 +51,18 @@ To run the test suite:
 
 ``` shell
 stack test
+```
+
+To run the benchmark suite:
+
+``` shell
+stack bench
+```
+
+For benchmark results in CSV format (useful for comparing across runs):
+
+``` shell
+stack bench --benchmark-arguments '--csv bench-results.csv'
 ```
 
 And that is all that there is to it. I hope you enjoy using this library and make great
