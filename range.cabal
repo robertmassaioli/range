@@ -90,6 +90,8 @@ Test-Suite test-range
    type:       exitcode-stdio-1.0
    main-is: Test/Range.hs
    other-modules: Test.RangeMerge
+                  , Test.RangeLaws
+                  , Test.Generators
    build-depends: base                          >= 4.5 && < 5
                   , Cabal                       >= 1.14
                   , QuickCheck                  >= 2.4.0.1 && < 3

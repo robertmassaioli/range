@@ -2,7 +2,7 @@
 
 Items marked **[DONE]** have been implemented.
 
-## 1. Missing set-theoretic property tests
+## 1. Missing set-theoretic property tests **[DONE]**
 
 The `Test/Range.hs` tests cover almost no algebraic laws at the `[Range a]` level — they only test `invert` and a few membership checks. The internal `RangeMerge` layer has good De Morgan / identity coverage, but the public API surface lacks properties like:
 - Idempotency: `mergeRanges (mergeRanges xs) == mergeRanges xs`
@@ -12,6 +12,8 @@ The `Test/Range.hs` tests cover almost no algebraic laws at the `[Range a]` leve
 - `difference a b == intersection a (invert b)` at the list level
 
 These are the contracts users rely on and they're currently untested at the public API layer.
+
+Implemented in `Test/RangeLaws.hs` with 15 QuickCheck properties covering idempotency, commutativity, associativity, distributivity, identity/absorption laws, difference, and double-invert. Shared `Arbitrary` instances extracted to `Test/Generators.hs`.
 
 ## 2. The `Arbitrary (Range a)` generator only produces `Inclusive` span bounds
 

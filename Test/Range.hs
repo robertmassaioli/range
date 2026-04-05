@@ -8,14 +8,14 @@ import Test.Framework (defaultMain, testGroup)
 import Test.QuickCheck
 import Test.Framework.Providers.QuickCheck2
 
-import Control.Applicative ((<$>), (<*>))
-import Control.Monad (liftM)
 import System.Random
 
 import Data.Range
 import qualified Data.Range.Algebra as Alg
 
 import Test.RangeMerge
+import Test.RangeLaws
+import Test.Generators ()
 
 data UnequalPair a = UnequalPair (a, a)
    deriving (Show)
@@ -55,25 +55,6 @@ tests_inRange = testGroup "inRange Function"
    , testProperty "infinite ranges contain everything" prop_infinite_range_contains_everything
    ]
 
-instance (Num a, Integral a, Ord a, Enum a) => Arbitrary (Range a) where
-   arbitrary = oneof
-      [ generateSingleton
-      , generateSpan
-      , generateLowerBound
-      , generateUpperBound
-      , generateInfiniteRange
-      ]
-      where
-         generateSingleton = liftM SingletonRange arbitrarySizedIntegral
-         generateSpan = do
-            first <- arbitrarySizedIntegral
-            second <- arbitrarySizedIntegral `suchThat` (> first)
-            return $ first +=+ second
-         generateLowerBound = liftM lbi arbitrarySizedIntegral
-         generateUpperBound = liftM ubi arbitrarySizedIntegral
-         generateInfiniteRange :: Gen (Range a)
-         generateInfiniteRange = return InfiniteRange
-
 -- an intersection of a value followed by a union of that value should be the identity.
 -- This is false. An intersection of a value followed by a union of that value should be
 -- the value itself.
@@ -88,15 +69,6 @@ prop_in_range_out_of_range_after_invert (point, ranges) =
 test_ranges_invert = testGroup "invert function for ranges"
    [ testProperty "element in range is now out of range after invert" prop_in_range_out_of_range_after_invert
    ]
-
-instance (Num a, Integral a, Ord a, Enum a) => Arbitrary (Alg.RangeExpr [Range a]) where
-  arbitrary = frequency
-    [ (3, Alg.const <$> arbitrary)
-    , (1, Alg.invert <$> arbitrary)
-    , (1, Alg.union <$> arbitrary <*> arbitrary)
-    , (1, Alg.intersection <$> arbitrary <*> arbitrary)
-    , (1, Alg.difference <$> arbitrary <*> arbitrary)
-    ]
 
 prop_equivalence_eval_and_evalPredicate :: ([Integer], Alg.RangeExpr [Range Integer]) -> Bool
 prop_equivalence_eval_and_evalPredicate (points, expr) = actual == expected
@@ -115,5 +87,6 @@ tests =
    , test_algebra_equivalence
    ]
    ++ rangeMergeTestCases
+   ++ rangeLawTestCases
 
 main = defaultMain tests
