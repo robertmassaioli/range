@@ -5,22 +5,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build & Test Commands
 
 ```bash
-# Update package index
-cabal new-update
-
 # Build the library
-cabal new-build
+stack build
 
 # Run all tests
-cabal new-test
+stack test
 
-# Configure with tests enabled (first time or after dependency changes)
-cabal new-configure --enable-tests -v2
-```
+# Build without running tests (faster iteration)
+stack build --test --no-run-tests
 
-To run a single test file directly (for faster iteration):
-```bash
-cabal new-repl test-range
+# Load the test suite in a REPL for interactive testing
+stack ghci range:test-range
 ```
 
 ## Architecture

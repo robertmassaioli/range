@@ -1,4 +1,3 @@
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE Safe #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -10,9 +9,7 @@ import Prelude hiding (const)
 import Data.Range.RangeInternal
 
 import Control.Monad.Free
-#if MIN_VERSION_base(4,9,0)
 import Data.Functor.Classes
-#endif
 
 data RangeExprF r
   = Invert r
@@ -21,7 +18,6 @@ data RangeExprF r
   | Difference r r
   deriving (Show, Eq, Functor)
 
-#if MIN_VERSION_base(4,9,0)
 instance Eq1 RangeExprF where
   liftEq eq (Invert a) (Invert b) = eq a b
   liftEq eq (Union a c) (Union b d) = eq a b && eq c d
@@ -43,7 +39,6 @@ instance Show1 RangeExprF where
     showPrec (p + 1) a .
     showString " - " .
     showPrec (p + 1) b
-#endif
 
 newtype RangeExpr a = RangeExpr { getFree :: Free RangeExprF a }
   deriving (Show, Eq, Functor)

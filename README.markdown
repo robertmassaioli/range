@@ -37,29 +37,28 @@ If you wish to see a better example in a real program then you should check out 
 
 ## Installation Instructions
 
-You can install the range library in the standard way that you install any other Haskell
-library: using Cabal. I have uploaded this package to Hackage so you can get it by:
+You can install the range library from Hackage using Cabal:
 
 ``` shell
 cabal install range
 ```
 
-If you wish to install it from source then check out this repository and do the following:
+If you wish to build from source using [Haskell Stack][2]:
 
 ``` shell
 cd /path/to/haskell/range
-cabal install
+stack build
 ```
 
-You may also wish to work on this library in a development environment, in which case you
-should  run:
+To run the test suite:
 
 ``` shell
-cd /path/to/haskell/range
-cabal-dev install
+stack test
 ```
 
 And that is all that there is to it. I hope you enjoy using this library and make great
 projects with it.
+
+ [2]: https://docs.haskellstack.org/
 
  [1]: http://hackage.haskell.org/package/splitter

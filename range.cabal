@@ -50,7 +50,7 @@ category:            Data
 build-type:          Simple
 
 -- Constraint on the version of Cabal needed to build this package.
-cabal-version:       >=1.8
+cabal-version:       >=1.10
 
 
 library
@@ -74,12 +74,9 @@ library
   -- Other library packages from which modules are imported.
   build-depends:  base >= 4.7 && < 5
                   , parsec >= 3
+                  , free >= 4.12
 
-  if impl(ghc < 8)
-    build-depends: free >= 4.12 && < 5, semigroups >= 0.19
-  else
-    build-depends: free >= 4.12
-
+  default-language: Haskell2010
   ghc-options: -Wall
 
 
@@ -93,9 +90,7 @@ Test-Suite test-range
                   , test-framework-quickcheck2  >= 0.2 && < 0.4
                   , test-framework              >= 0.4 && < 0.9
                   , random                      >= 1.0
+                  , free >= 4.12
                   , range
-   if impl(ghc < 8)
-    build-depends: free >= 4.12 && < 5
-   else
-    build-depends: free >= 4.12
+   default-language: Haskell2010
    ghc-options: -rtsopts -Wall -fno-enable-rewrite-rules

@@ -1,4 +1,3 @@
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE Safe #-}
 
 -- | This module provides a simpler interface than the 'Data.Range' module, allowing you to work with
@@ -35,11 +34,6 @@ module Data.Ranges (
 ) where
 
 import Data.Semigroup
-
-#if !MIN_VERSION_base(4,8,0)
-import Control.Applicative
-#endif
-
 import qualified Data.Range as R
 
 -- TODO Can we make this use a Range Algebra internally ?
