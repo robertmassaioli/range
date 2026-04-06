@@ -51,6 +51,8 @@ Implemented in `Bench/Range.hs` using `tasty-bench`: 55 benchmarks across point 
 
 `NFData` was added as part of item 3 (benchmark suite). `Ord` and `Hashable` remain unimplemented.
 
-## 10. `Data.Range.Parser` has no tests
+## 10. `Data.Range.Parser` has no tests **[DONE]**
 
 The parser module has zero test coverage. It's a real user-facing input surface (explicitly intended for CLI programs) with at least one known edge case (negative numbers, see #4). A small HUnit or QuickCheck test group covering: round-trip `show`/`parse` for valid inputs, `parseRanges` on the examples from the module Haddock, and a few known-invalid inputs, would meaningfully improve confidence.
+
+Implemented in `Test/RangeParser.hs` with 13 tests covering: the Haddock example, singletons, spans, lower/upper bounds, wildcards, unions, custom parser args, and edge cases. Also documented that the parser accepts non-range input as an empty list (a known limitation of the `sepBy` design).
