@@ -51,6 +51,41 @@ Implemented in `Bench/Range.hs` using `tasty-bench`: 55 benchmarks across point 
 
 `NFData` was added as part of item 3 (benchmark suite). `Ord` and `Hashable` remain unimplemented.
 
+### Example use cases
+
+**Deduplicating a collection of ranges.** If a user collects ranges from multiple sources and wants to remove exact duplicates before merging, they currently cannot put them in a `Set`:
+
+```haskell
+-- Does not compile today — no Ord (Range Integer)
+import Data.Set (Set)
+uniqueRanges :: [Range Integer] -> Set (Range Integer)
+uniqueRanges = Data.Set.fromList
+```
+
+**Using a range as a Map key.** A user building a rule engine might want to associate metadata with each range:
+
+```haskell
+-- Does not compile today
+import Data.Map.Strict (Map)
+type RuleMap = Map (Range Integer) String
+
+rules :: RuleMap
+rules = Data.Map.fromList
+  [ (1 +=+ 10,  "low")
+  , (11 +=+ 50, "medium")
+  , (lbi 51,    "high")
+  ]
+```
+
+**Sorting ranges for display.** After `mergeRanges` the output is in canonical internal order, but a user wanting to sort a heterogeneous list of ranges (e.g. for a CLI summary) hits the same wall:
+
+```haskell
+-- Does not compile today
+import Data.List (sort)
+displayRanges :: [Range Integer] -> String
+displayRanges = show . sort
+```
+
 ## 10. `Data.Range.Parser` has no tests **[DONE]**
 
 The parser module has zero test coverage. It's a real user-facing input surface (explicitly intended for CLI programs) with at least one known edge case (negative numbers, see #4). A small HUnit or QuickCheck test group covering: round-trip `show`/`parse` for valid inputs, `parseRanges` on the examples from the module Haddock, and a few known-invalid inputs, would meaningfully improve confidence.
