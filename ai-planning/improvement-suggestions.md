@@ -74,7 +74,64 @@ This is a purely structural ordering — GHC orders constructors by their declar
 
 **This ordering is not semantically meaningful** — it does not reflect the mathematical ordering of ranges on the number line, and `SingletonRange 5` will not compare equal to `SpanRange (Bound 5 Inclusive) (Bound 5 Inclusive)` even though they represent the same set. This is consistent with the existing derived `Eq` instance, which has the same behaviour.
 
-The ordering is appropriate for all three motivating use cases (deduplication via `Set`, `Map` keys, and `sort` for display) because those only require a consistent total order, not a mathematically meaningful one. It would **not** be appropriate for anything that expects order to reflect the position of ranges on the number line — use `mergeRanges` and compare the resulting canonical form for that.
+The ordering is appropriate for deduplication via `Set` and `Map` keys because those only require a consistent total order, not a mathematically meaningful one. It would **not** be appropriate for sorting ranges by position on the number line.
+
+### Positional ordering via a newtype
+
+For sorting ranges by where they sit on the number line, a `newtype` wrapper is the right Haskell idiom — it signals intent explicitly and avoids polluting `Range` itself with an ordering that conflicts with intuition.
+
+The design uses an extended bound type to represent -∞ and +∞:
+
+```haskell
+-- In Data.Range or a new Data.Range.Ord module
+data ExtBound a = NegInfinity | FiniteBound (Bound a) | PosInfinity
+   deriving (Eq)
+
+-- NegInfinity < FiniteBound _ < PosInfinity
+-- Within FiniteBound, use compareLower/compareHigher from Util as appropriate
+
+-- A Range wrapped for positional ordering: lower bound first, upper bound as tiebreaker
+newtype ByPosition a = ByPosition { unByPosition :: Range a }
+
+lowerExtBound :: Range a -> ExtBound a
+lowerExtBound (UpperBoundRange _) = NegInfinity
+lowerExtBound InfiniteRange       = NegInfinity
+lowerExtBound (LowerBoundRange b) = FiniteBound b
+lowerExtBound (SpanRange lo _)    = FiniteBound lo
+lowerExtBound (SingletonRange x)  = FiniteBound (Bound x Inclusive)
+
+upperExtBound :: Range a -> ExtBound a
+upperExtBound (LowerBoundRange _) = PosInfinity
+upperExtBound InfiniteRange       = PosInfinity
+upperExtBound (UpperBoundRange b) = FiniteBound b
+upperExtBound (SpanRange _ hi)    = FiniteBound hi
+upperExtBound (SingletonRange x)  = FiniteBound (Bound x Inclusive)
+
+instance Ord a => Ord (ByPosition a) where
+  compare (ByPosition a) (ByPosition b) =
+    case compareExtBound compareLower (lowerExtBound a) (lowerExtBound b) of
+      EQ -> compareExtBound compareHigher (upperExtBound a) (upperExtBound b)
+      x  -> x
+```
+
+The asymmetry in `Bound` comparison is already handled by `compareLower` and `compareHigher` in `Data.Range.Util`: for lower bounds `Inclusive 5` comes before `Exclusive 5` (i.e. `[5,` starts earlier than `(5,`), and for upper bounds `Exclusive 5` comes before `Inclusive 5` (i.e. `,5)` ends earlier than `,5]`).
+
+Usage would look like:
+
+```haskell
+import Data.List (sortOn)
+
+-- Sort ranges by position on the number line
+sortByPosition :: Ord a => [Range a] -> [Range a]
+sortByPosition = fmap unByPosition . sort . fmap ByPosition
+-- or: sortOn ByPosition
+
+-- The structural Ord is still available for Map/Set keying
+import Data.Map.Strict (Map)
+type RuleMap = Map (Range Integer) String
+```
+
+This keeps the two concerns — keying/deduplication vs positional sorting — separate and explicit. Neither bleeds into the base `Range` type.
 
 ### Example use cases
 
