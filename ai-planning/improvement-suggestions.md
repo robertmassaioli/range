@@ -53,53 +53,69 @@ Implemented in `Bench/Range.hs` using `tasty-bench`: 55 benchmarks across point 
 
 ### Implementation
 
-Rather than adding `Ord` directly to `Range`, both orderings should be exposed as newtypes so every use is explicit about which ordering it intends. `Range` itself stays `Ord`-free.
+Both orderings are exposed as newtypes so every use site is explicit about which ordering it intends. `Range` itself **never gets an `Ord` instance** — not even internally.
 
-**Structural ordering** via `ByConstructor`:
+#### Structural ordering via `ByConstructor`
 
-```haskell
--- In Data.Range or a new Data.Range.Ord module
-newtype ByConstructor a = ByConstructor { unByConstructor :: Range a }
-   deriving (Eq, Ord)  -- derives structural Ord via Range's derived Ord
-```
-
-For this to work, `Ord` is added to `BoundType`, `Bound a`, and `Range a` in `Data/Range/Data.hs`, but **not exported** in the public API — it exists solely to power the `ByConstructor` deriving:
+`BoundType` and `Bound a` gain `Ord` (they are small supporting types where a structural order is unambiguous). `Range a` does not. `ByConstructor` is given a manual `Ord` instance:
 
 ```haskell
+-- BoundType: Inclusive < Exclusive
 data BoundType = Inclusive | Exclusive
    deriving (Eq, Ord, Show, Generic)
 
+-- Bound a: compare by value first, then by boundType
 data Bound a = Bound { boundValue :: a, boundType :: BoundType }
    deriving (Eq, Ord, Show, Generic)
 
+-- Range a: no Ord instance
 data Range a = SingletonRange a | SpanRange (Bound a) (Bound a) | ...
-   deriving (Eq, Ord, Generic)
+   deriving (Eq, Generic)
 ```
 
-The structural ordering is:
-- `BoundType`: `Inclusive < Exclusive`
-- `Bound a`: by `boundValue` first, then `boundType`
-- `Range a`: by constructor position (`SingletonRange < SpanRange < LowerBoundRange < UpperBoundRange < InfiniteRange`), then by fields
+```haskell
+-- In Data.Range.Ord (new module)
+newtype ByConstructor a = ByConstructor { unByConstructor :: Range a }
+   deriving Eq
+
+-- Constructor rank: SingletonRange=0, SpanRange=1, LowerBoundRange=2,
+--                   UpperBoundRange=3, InfiniteRange=4
+constructorRank :: Range a -> Int
+constructorRank (SingletonRange _)  = 0
+constructorRank (SpanRange _ _)     = 1
+constructorRank (LowerBoundRange _) = 2
+constructorRank (UpperBoundRange _) = 3
+constructorRank InfiniteRange       = 4
+
+instance Ord a => Ord (ByConstructor a) where
+  compare (ByConstructor x) (ByConstructor y) =
+    case compare (constructorRank x) (constructorRank y) of
+      EQ -> compareFields x y
+      r  -> r
+
+compareFields :: Ord a => Range a -> Range a -> Ordering
+compareFields (SingletonRange a)  (SingletonRange b)  = compare a b
+compareFields (SpanRange lo1 hi1) (SpanRange lo2 hi2) = compare lo1 lo2 <> compare hi1 hi2
+compareFields (LowerBoundRange a) (LowerBoundRange b) = compare a b
+compareFields (UpperBoundRange a) (UpperBoundRange b) = compare a b
+compareFields InfiniteRange       InfiniteRange       = EQ
+compareFields _                   _                   = EQ  -- rank mismatch handled above
+```
 
 **This ordering is not semantically meaningful** — `SingletonRange 5` and `SpanRange (Bound 5 Inclusive) (Bound 5 Inclusive)` are not equal under it, just as they are not equal under the existing derived `Eq`. It is only appropriate where any consistent total order will do (deduplication, `Map` keys).
 
-Having both orderings as newtypes makes the intent symmetric and explicit — neither is a "default" that could be misapplied accidentally.
+#### Positional ordering via `ByPosition`
 
-### Positional ordering via a newtype
-
-For sorting ranges by where they sit on the number line, a `newtype` wrapper is the right Haskell idiom — it signals intent explicitly and avoids polluting `Range` itself with an ordering that conflicts with intuition.
-
-The design uses an extended bound type to represent -∞ and +∞:
+For sorting ranges by where they sit on the number line, a `newtype` wrapper signals intent explicitly. The design uses an extended bound type to represent -∞ and +∞:
 
 ```haskell
--- In Data.Range or a new Data.Range.Ord module
+-- In Data.Range.Ord
 data ExtBound a = NegInfinity | FiniteBound (Bound a) | PosInfinity
    deriving (Eq)
 
 -- NegInfinity < FiniteBound _ < PosInfinity
 -- Within FiniteBound, use compareLower/compareHigher from Util as appropriate
 
--- A Range wrapped for positional ordering: lower bound first, upper bound as tiebreaker
 newtype ByPosition a = ByPosition { unByPosition :: Range a }
 
 lowerExtBound :: Range a -> ExtBound a
@@ -125,63 +141,51 @@ instance Ord a => Ord (ByPosition a) where
 
 The asymmetry in `Bound` comparison is already handled by `compareLower` and `compareHigher` in `Data.Range.Util`: for lower bounds `Inclusive 5` comes before `Exclusive 5` (i.e. `[5,` starts earlier than `(5,`), and for upper bounds `Exclusive 5` comes before `Inclusive 5` (i.e. `,5)` ends earlier than `,5]`).
 
-Usage would look like:
-
-```haskell
-import Data.List (sortOn)
-
--- Sort ranges by position on the number line
-sortByPosition :: Ord a => [Range a] -> [Range a]
-sortByPosition = fmap unByPosition . sort . fmap ByPosition
--- or: sortOn ByPosition
-
--- The structural Ord is still available for Map/Set keying
-import Data.Map.Strict (Map)
-type RuleMap = Map (Range Integer) String
-```
-
-This keeps the two concerns — keying/deduplication vs positional sorting — separate and explicit. Neither bleeds into the base `Range` type.
+Having both orderings as newtypes makes the intent explicit at every use site — neither is a "default" that could be misapplied accidentally.
 
 ### Example use cases
 
-**Deduplicating a collection of ranges.** Uses the structural `Ord`. A user collecting ranges from multiple sources who wants to remove exact duplicates before merging:
+**Deduplicating a collection of ranges.** Uses `ByConstructor`. A user collecting ranges from multiple sources who wants to remove exact duplicates before merging:
 
 ```haskell
--- Requires structural Ord (Range Integer)
+import Data.Range.Ord (ByConstructor(..))
 import Data.Set (Set)
 import qualified Data.Set as Set
 
-uniqueRanges :: [Range Integer] -> [Range Integer]
-uniqueRanges = Set.toList . Set.fromList
+uniqueRanges :: Ord a => [Range a] -> [Range a]
+uniqueRanges = map unByConstructor . Set.toList . Set.fromList . map ByConstructor
 ```
 
 Note: this deduplicates structurally identical ranges (`SingletonRange 5` and `SpanRange (Bound 5 Inclusive) (Bound 5 Inclusive)` would both survive as they are not structurally equal). For semantic deduplication, use `mergeRanges` instead.
 
-**Using a range as a Map key.** Uses the structural `Ord`. A user building a rule engine who wants to associate metadata with each distinct range:
+**Using a range as a Map key.** Uses `ByConstructor`. A user building a rule engine who wants to associate metadata with each distinct range:
 
 ```haskell
--- Requires structural Ord (Range Integer)
+import Data.Range.Ord (ByConstructor(..))
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 
-type RuleMap = Map (Range Integer) String
+type RuleMap = Map (ByConstructor Integer) String
 
 rules :: RuleMap
 rules = Map.fromList
-  [ (1 +=+ 10,  "low")
-  , (11 +=+ 50, "medium")
-  , (lbi 51,    "high")
+  [ (ByConstructor (1 +=+ 10),  "low")
+  , (ByConstructor (11 +=+ 50), "medium")
+  , (ByConstructor (lbi 51),    "high")
   ]
+
+lookupRule :: Range Integer -> RuleMap -> Maybe String
+lookupRule r m = Map.lookup (ByConstructor r) m
 ```
 
 **Sorting ranges by position for display.** Uses `ByPosition`. After `mergeRanges` the output is in canonical internal order, but a user wanting to display ranges sorted by their position on the number line (e.g. upper-bounded ranges first, then spans, then lower-bounded):
 
 ```haskell
--- Requires ByPosition newtype from Data.Range.Ord
+import Data.Range.Ord (ByPosition(..))
 import Data.List (sortOn)
 
-displayRanges :: [Range Integer] -> String
-displayRanges = show . sortOn ByPosition
+displayRanges :: Ord a => [Range a] -> [Range a]
+displayRanges = sortOn ByPosition
 ```
 
 This produces an intuitively ordered result like `[ube 0, 1 +=+ 5, lbi 10]` rather than the structural order which would place `UpperBoundRange` after `SpanRange` by constructor position.
