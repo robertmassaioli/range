@@ -51,6 +51,31 @@ Implemented in `Bench/Range.hs` using `tasty-bench`: 55 benchmarks across point 
 
 `NFData` was added as part of item 3 (benchmark suite). `Ord` and `Hashable` remain unimplemented.
 
+### Implementation
+
+Add `Ord` to three `deriving` clauses in `Data/Range/Data.hs`:
+
+```haskell
+data BoundType = Inclusive | Exclusive
+   deriving (Eq, Ord, Show, Generic)
+
+data Bound a = Bound { boundValue :: a, boundType :: BoundType }
+   deriving (Eq, Ord, Show, Generic)
+
+data Range a = SingletonRange a | SpanRange (Bound a) (Bound a) | ...
+   deriving (Eq, Ord, Generic)
+```
+
+This is a purely structural ordering — GHC orders constructors by their declaration position, then by fields lexicographically. The ordering is:
+
+- For `BoundType`: `Inclusive < Exclusive`
+- For `Bound a`: ordered by `boundValue` first, then `boundType`
+- For `Range a`: ordered by constructor position (`SingletonRange < SpanRange < LowerBoundRange < UpperBoundRange < InfiniteRange`), then by fields
+
+**This ordering is not semantically meaningful** — it does not reflect the mathematical ordering of ranges on the number line, and `SingletonRange 5` will not compare equal to `SpanRange (Bound 5 Inclusive) (Bound 5 Inclusive)` even though they represent the same set. This is consistent with the existing derived `Eq` instance, which has the same behaviour.
+
+The ordering is appropriate for all three motivating use cases (deduplication via `Set`, `Map` keys, and `sort` for display) because those only require a consistent total order, not a mathematically meaningful one. It would **not** be appropriate for anything that expects order to reflect the position of ranges on the number line — use `mergeRanges` and compare the resulting canonical form for that.
+
 ### Example use cases
 
 **Deduplicating a collection of ranges.** If a user collects ranges from multiple sources and wants to remove exact duplicates before merging, they currently cannot put them in a `Set`:
