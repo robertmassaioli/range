@@ -135,38 +135,47 @@ This keeps the two concerns — keying/deduplication vs positional sorting — s
 
 ### Example use cases
 
-**Deduplicating a collection of ranges.** If a user collects ranges from multiple sources and wants to remove exact duplicates before merging, they currently cannot put them in a `Set`:
+**Deduplicating a collection of ranges.** Uses the structural `Ord`. A user collecting ranges from multiple sources who wants to remove exact duplicates before merging:
 
 ```haskell
--- Does not compile today — no Ord (Range Integer)
+-- Requires structural Ord (Range Integer)
 import Data.Set (Set)
-uniqueRanges :: [Range Integer] -> Set (Range Integer)
-uniqueRanges = Data.Set.fromList
+import qualified Data.Set as Set
+
+uniqueRanges :: [Range Integer] -> [Range Integer]
+uniqueRanges = Set.toList . Set.fromList
 ```
 
-**Using a range as a Map key.** A user building a rule engine might want to associate metadata with each range:
+Note: this deduplicates structurally identical ranges (`SingletonRange 5` and `SpanRange (Bound 5 Inclusive) (Bound 5 Inclusive)` would both survive as they are not structurally equal). For semantic deduplication, use `mergeRanges` instead.
+
+**Using a range as a Map key.** Uses the structural `Ord`. A user building a rule engine who wants to associate metadata with each distinct range:
 
 ```haskell
--- Does not compile today
+-- Requires structural Ord (Range Integer)
 import Data.Map.Strict (Map)
+import qualified Data.Map.Strict as Map
+
 type RuleMap = Map (Range Integer) String
 
 rules :: RuleMap
-rules = Data.Map.fromList
+rules = Map.fromList
   [ (1 +=+ 10,  "low")
   , (11 +=+ 50, "medium")
   , (lbi 51,    "high")
   ]
 ```
 
-**Sorting ranges for display.** After `mergeRanges` the output is in canonical internal order, but a user wanting to sort a heterogeneous list of ranges (e.g. for a CLI summary) hits the same wall:
+**Sorting ranges by position for display.** Uses `ByPosition`. After `mergeRanges` the output is in canonical internal order, but a user wanting to display ranges sorted by their position on the number line (e.g. upper-bounded ranges first, then spans, then lower-bounded):
 
 ```haskell
--- Does not compile today
-import Data.List (sort)
+-- Requires ByPosition newtype from Data.Range.Ord
+import Data.List (sortOn)
+
 displayRanges :: [Range Integer] -> String
-displayRanges = show . sort
+displayRanges = show . sortOn ByPosition
 ```
+
+This produces an intuitively ordered result like `[ube 0, 1 +=+ 5, lbi 10]` rather than the structural order which would place `UpperBoundRange` after `SpanRange` by constructor position.
 
 ## 10. `Data.Range.Parser` has no tests **[DONE]**
 
