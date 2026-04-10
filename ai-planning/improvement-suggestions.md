@@ -53,7 +53,17 @@ Implemented in `Bench/Range.hs` using `tasty-bench`: 55 benchmarks across point 
 
 ### Implementation
 
-Add `Ord` to three `deriving` clauses in `Data/Range/Data.hs`:
+Rather than adding `Ord` directly to `Range`, both orderings should be exposed as newtypes so every use is explicit about which ordering it intends. `Range` itself stays `Ord`-free.
+
+**Structural ordering** via `ByConstructor`:
+
+```haskell
+-- In Data.Range or a new Data.Range.Ord module
+newtype ByConstructor a = ByConstructor { unByConstructor :: Range a }
+   deriving (Eq, Ord)  -- derives structural Ord via Range's derived Ord
+```
+
+For this to work, `Ord` is added to `BoundType`, `Bound a`, and `Range a` in `Data/Range/Data.hs`, but **not exported** in the public API — it exists solely to power the `ByConstructor` deriving:
 
 ```haskell
 data BoundType = Inclusive | Exclusive
@@ -66,15 +76,14 @@ data Range a = SingletonRange a | SpanRange (Bound a) (Bound a) | ...
    deriving (Eq, Ord, Generic)
 ```
 
-This is a purely structural ordering — GHC orders constructors by their declaration position, then by fields lexicographically. The ordering is:
+The structural ordering is:
+- `BoundType`: `Inclusive < Exclusive`
+- `Bound a`: by `boundValue` first, then `boundType`
+- `Range a`: by constructor position (`SingletonRange < SpanRange < LowerBoundRange < UpperBoundRange < InfiniteRange`), then by fields
 
-- For `BoundType`: `Inclusive < Exclusive`
-- For `Bound a`: ordered by `boundValue` first, then `boundType`
-- For `Range a`: ordered by constructor position (`SingletonRange < SpanRange < LowerBoundRange < UpperBoundRange < InfiniteRange`), then by fields
+**This ordering is not semantically meaningful** — `SingletonRange 5` and `SpanRange (Bound 5 Inclusive) (Bound 5 Inclusive)` are not equal under it, just as they are not equal under the existing derived `Eq`. It is only appropriate where any consistent total order will do (deduplication, `Map` keys).
 
-**This ordering is not semantically meaningful** — it does not reflect the mathematical ordering of ranges on the number line, and `SingletonRange 5` will not compare equal to `SpanRange (Bound 5 Inclusive) (Bound 5 Inclusive)` even though they represent the same set. This is consistent with the existing derived `Eq` instance, which has the same behaviour.
-
-The ordering is appropriate for deduplication via `Set` and `Map` keys because those only require a consistent total order, not a mathematically meaningful one. It would **not** be appropriate for sorting ranges by position on the number line.
+Having both orderings as newtypes makes the intent symmetric and explicit — neither is a "default" that could be misapplied accidentally.
 
 ### Positional ordering via a newtype
 
