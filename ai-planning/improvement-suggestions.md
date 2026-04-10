@@ -75,7 +75,7 @@ data Range a = SingletonRange a | SpanRange (Bound a) (Bound a) | ...
 
 ```haskell
 -- In Data.Range.Ord (new module)
-newtype ByConstructor a = ByConstructor { unByConstructor :: Range a }
+newtype KeyRange a = KeyRange { unKeyRange :: Range a }
    deriving Eq
 
 -- Constructor rank: SingletonRange=0, SpanRange=1, LowerBoundRange=2,
@@ -87,8 +87,8 @@ constructorRank (LowerBoundRange _) = 2
 constructorRank (UpperBoundRange _) = 3
 constructorRank InfiniteRange       = 4
 
-instance Ord a => Ord (ByConstructor a) where
-  compare (ByConstructor x) (ByConstructor y) =
+instance Ord a => Ord (KeyRange a) where
+  compare (KeyRange x) (KeyRange y) =
     case compare (constructorRank x) (constructorRank y) of
       EQ -> compareFields x y
       r  -> r
@@ -104,7 +104,7 @@ compareFields _                   _                   = EQ  -- rank mismatch han
 
 **This ordering is not semantically meaningful** — `SingletonRange 5` and `SpanRange (Bound 5 Inclusive) (Bound 5 Inclusive)` are not equal under it, just as they are not equal under the existing derived `Eq`. It is only appropriate where any consistent total order will do (deduplication, `Map` keys).
 
-#### Positional ordering via `ByPosition`
+#### Positional ordering via `SortedRange`
 
 For sorting ranges by where they sit on the number line, a `newtype` wrapper signals intent explicitly. The design uses an extended bound type to represent -∞ and +∞:
 
@@ -116,7 +116,7 @@ data ExtBound a = NegInfinity | FiniteBound (Bound a) | PosInfinity
 -- NegInfinity < FiniteBound _ < PosInfinity
 -- Within FiniteBound, use compareLower/compareHigher from Util as appropriate
 
-newtype ByPosition a = ByPosition { unByPosition :: Range a }
+newtype SortedRange a = SortedRange { unSortedRange :: Range a }
 
 lowerExtBound :: Range a -> ExtBound a
 lowerExtBound (UpperBoundRange _) = NegInfinity
@@ -132,8 +132,8 @@ upperExtBound (UpperBoundRange b) = FiniteBound b
 upperExtBound (SpanRange _ hi)    = FiniteBound hi
 upperExtBound (SingletonRange x)  = FiniteBound (Bound x Inclusive)
 
-instance Ord a => Ord (ByPosition a) where
-  compare (ByPosition a) (ByPosition b) =
+instance Ord a => Ord (SortedRange a) where
+  compare (SortedRange a) (SortedRange b) =
     case compareExtBound compareLower (lowerExtBound a) (lowerExtBound b) of
       EQ -> compareExtBound compareHigher (upperExtBound a) (upperExtBound b)
       x  -> x
@@ -141,51 +141,51 @@ instance Ord a => Ord (ByPosition a) where
 
 The asymmetry in `Bound` comparison is already handled by `compareLower` and `compareHigher` in `Data.Range.Util`: for lower bounds `Inclusive 5` comes before `Exclusive 5` (i.e. `[5,` starts earlier than `(5,`), and for upper bounds `Exclusive 5` comes before `Inclusive 5` (i.e. `,5)` ends earlier than `,5]`).
 
-Having both orderings as newtypes makes the intent explicit at every use site — neither is a "default" that could be misapplied accidentally.
+Having both orderings as newtypes makes the intent explicit at every use site — neither is a "default" that could be misapplied accidentally. Both are exported from a new `Data.Range.Ord` module.
 
 ### Example use cases
 
-**Deduplicating a collection of ranges.** Uses `ByConstructor`. A user collecting ranges from multiple sources who wants to remove exact duplicates before merging:
+**Deduplicating a collection of ranges.** Uses `KeyRange`. A user collecting ranges from multiple sources who wants to remove exact duplicates before merging:
 
 ```haskell
-import Data.Range.Ord (ByConstructor(..))
+import Data.Range.Ord (KeyRange(..))
 import Data.Set (Set)
 import qualified Data.Set as Set
 
 uniqueRanges :: Ord a => [Range a] -> [Range a]
-uniqueRanges = map unByConstructor . Set.toList . Set.fromList . map ByConstructor
+uniqueRanges = map unKeyRange . Set.toList . Set.fromList . map KeyRange
 ```
 
 Note: this deduplicates structurally identical ranges (`SingletonRange 5` and `SpanRange (Bound 5 Inclusive) (Bound 5 Inclusive)` would both survive as they are not structurally equal). For semantic deduplication, use `mergeRanges` instead.
 
-**Using a range as a Map key.** Uses `ByConstructor`. A user building a rule engine who wants to associate metadata with each distinct range:
+**Using a range as a Map key.** Uses `KeyRange`. A user building a rule engine who wants to associate metadata with each distinct range:
 
 ```haskell
-import Data.Range.Ord (ByConstructor(..))
+import Data.Range.Ord (KeyRange(..))
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 
-type RuleMap = Map (ByConstructor Integer) String
+type RuleMap = Map (KeyRange Integer) String
 
 rules :: RuleMap
 rules = Map.fromList
-  [ (ByConstructor (1 +=+ 10),  "low")
-  , (ByConstructor (11 +=+ 50), "medium")
-  , (ByConstructor (lbi 51),    "high")
+  [ (KeyRange (1 +=+ 10),  "low")
+  , (KeyRange (11 +=+ 50), "medium")
+  , (KeyRange (lbi 51),    "high")
   ]
 
 lookupRule :: Range Integer -> RuleMap -> Maybe String
-lookupRule r m = Map.lookup (ByConstructor r) m
+lookupRule r m = Map.lookup (KeyRange r) m
 ```
 
-**Sorting ranges by position for display.** Uses `ByPosition`. After `mergeRanges` the output is in canonical internal order, but a user wanting to display ranges sorted by their position on the number line (e.g. upper-bounded ranges first, then spans, then lower-bounded):
+**Sorting ranges by position for display.** Uses `SortedRange`. After `mergeRanges` the output is in canonical internal order, but a user wanting to display ranges sorted by their position on the number line (e.g. upper-bounded ranges first, then spans, then lower-bounded):
 
 ```haskell
-import Data.Range.Ord (ByPosition(..))
+import Data.Range.Ord (SortedRange(..))
 import Data.List (sortOn)
 
 displayRanges :: Ord a => [Range a] -> [Range a]
-displayRanges = sortOn ByPosition
+displayRanges = sortOn SortedRange
 ```
 
 This produces an intuitively ordered result like `[ube 0, 1 +=+ 5, lbi 10]` rather than the structural order which would place `UpperBoundRange` after `SpanRange` by constructor position.
