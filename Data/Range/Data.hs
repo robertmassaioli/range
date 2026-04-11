@@ -16,7 +16,7 @@ instance NFData OverlapType
 data BoundType
    = Inclusive -- ^ The value at the boundary should be included in the bound.
    | Exclusive -- ^ The value at the boundary should be excluded in the bound.
-   deriving (Eq, Show, Generic)
+   deriving (Eq, Ord, Show, Generic)
 
 instance NFData BoundType
 
@@ -25,7 +25,7 @@ instance NFData BoundType
 data Bound a = Bound
    { boundValue :: a          -- ^ The value at the edge of this bound.
    , boundType :: BoundType   -- ^ The type of bound. Should be 'Inclusive' or 'Exclusive'.
-   } deriving (Eq, Show, Generic)
+   } deriving (Eq, Ord, Show, Generic)
 
 instance NFData a => NFData (Bound a)
 
