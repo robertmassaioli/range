@@ -45,11 +45,13 @@ Implemented in `Bench/Range.hs` using `tasty-bench`: 55 benchmarks across point 
 
 `RangeInternal.hs:13-21` documents three invariants as a comment block but there's no `newtype` wrapper, smart constructor, or `assert`-guarded constructor to enforce them. A single malformed `RangeMerge` (e.g. unsorted spans, overlapping spans) passed to `unionRangeMerges` or `intersectionRangeMerges` will produce silently wrong results. At minimum, a `validateRangeMerge :: RangeMerge a -> Bool` function usable in tests would be valuable.
 
-## 9. No `Ord` instance for `Range`
+## 9. No `Ord` instance for `Range` **[DONE]**
 
 `Range a` has `Eq` and `Show` but no `Ord`, `NFData`, or `Hashable` instances. `Ord` is the most consequential missing one — users who want to store ranges in `Set` or as `Map` keys, or sort a list of ranges for display, currently can't without defining orphan instances themselves. A derived or manual `Ord` would be a non-breaking addition.
 
-`NFData` was added as part of item 3 (benchmark suite). `Ord` and `Hashable` remain unimplemented.
+`NFData` was added as part of item 3 (benchmark suite). `Hashable` remains unimplemented.
+
+Implemented in `Data/Range/Ord.hs` as two newtypes exported from `Data.Range.Ord`: `KeyRange` (structural ordering for `Map`/`Set` keys) and `SortedRange` (positional ordering by number line location). `Range` itself has no `Ord` instance. 22 tests added in `Test/RangeOrd.hs`. Bumped to v0.3.2.0.
 
 ### Implementation
 
