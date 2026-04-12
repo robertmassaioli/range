@@ -15,6 +15,7 @@
 -- == Example: Map keyed on ranges
 --
 -- @
+-- import Data.Range (Range, (+=+), lbi)
 -- import Data.Range.Ord (KeyRange(..))
 -- import qualified Data.Map.Strict as Map
 --
@@ -28,17 +29,26 @@
 --   ]
 -- @
 --
--- == Example: sorting ranges by position
+-- == Example: sorting ranges by position on the number line
+--
+-- >>> import Data.List (sortOn)
+-- >>> sortOn SortedRange [lbi 10, 1 +=+ 5, ube 0 :: Range Integer]
+-- [ube 0,1 +=+ 5,lbi 10]
 --
 -- @
--- import Data.Range.Ord (SortedRange(..))
--- import Data.List (sortOn)
---
+-- -- or equivalently:
 -- displayRanges :: Ord a => [Range a] -> [Range a]
 -- displayRanges = sortOn SortedRange
 -- @
 module Data.Range.Ord
-   ( KeyRange(..)
+   ( -- * Structural ordering
+     -- | Use 'KeyRange' when you need 'Range' values as 'Data.Map.Map' keys or
+     -- in a 'Data.Set.Set'. The ordering is consistent but not semantically
+     -- meaningful on the number line.
+     KeyRange(..)
+     -- * Positional ordering
+     -- | Use 'SortedRange' when you want to sort ranges by where they sit on
+     -- the number line (lower bound first, upper bound as tiebreaker).
    , SortedRange(..)
    ) where
 
@@ -59,7 +69,13 @@ import Data.Range.Util (compareLower, compareHigher)
 -- This ordering is not semantically meaningful on the number line —
 -- @SingletonRange 5@ and @SpanRange (Bound 5 Inclusive) (Bound 5 Inclusive)@
 -- are considered distinct. It is only appropriate where any consistent total
--- order will do.
+-- order will do (deduplication, 'Data.Map.Map' keys).
+--
+-- Use 'unKeyRange' to unwrap the underlying 'Range'.
+--
+-- See also 'SortedRange' for ordering by position on the number line.
+--
+-- @since 0.3.2.0
 newtype KeyRange a = KeyRange { unKeyRange :: Range a }
    deriving (Eq, Show)
 
@@ -124,8 +140,18 @@ upperExtBound (SingletonRange x)  = FiniteBound (Bound x Inclusive)
 --
 -- The 'Eq' instance is consistent with 'Ord': two 'SortedRange' values are
 -- equal iff they have the same lower and upper bounds. This means
--- @SortedRange (SingletonRange 5)@ and
--- @SortedRange (5 +=+ 5)@ are considered equal.
+-- @SortedRange (SingletonRange 5)@ and @SortedRange (5 +=+ 5)@ are considered
+-- equal (they occupy the same point on the number line).
+--
+-- Use 'unSortedRange' to unwrap the underlying 'Range'. Typical usage:
+--
+-- >>> import Data.List (sortOn)
+-- >>> sortOn SortedRange [lbi 10, 1 +=+ 5, ube 0 :: Range Integer]
+-- [ube 0,1 +=+ 5,lbi 10]
+--
+-- See also 'KeyRange' for a structural ordering suitable for 'Data.Map.Map' keys.
+--
+-- @since 0.3.2.0
 newtype SortedRange a = SortedRange { unSortedRange :: Range a }
 
 instance Show a => Show (SortedRange a) where
