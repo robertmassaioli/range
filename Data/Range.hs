@@ -7,6 +7,14 @@
 --
 -- __Note:__ It is intended that you will read the documentation in this module from top to bottom.
 --
+-- = Module guide
+--
+-- * "Data.Range" — __start here__. Direct functions on @['Range' a]@.
+-- * "Data.Ranges" — 'Data.Ranges.Ranges' newtype with 'Monoid' \/ 'Semigroup' semantics (@('<>')@ means union).
+-- * "Data.Range.Ord" — 'Data.Range.Ord.KeyRange' and 'Data.Range.Ord.SortedRange' newtypes for 'Ord'-requiring contexts.
+-- * "Data.Range.Parser" — Parsec-based parser for CLI range strings.
+-- * "Data.Range.Algebra" — F-Algebra for deferred, efficient expression trees.
+--
 -- = Understanding custom range syntax
 --
 -- This library supports five different types of ranges:
@@ -135,48 +143,50 @@ import Data.Range.RangeInternal (exportRangeMerge, joinRM, loadRanges)
 import qualified Data.Range.Algebra as Alg
 
 -- | Performs a set union between the two input ranges and returns the resultant set of
--- ranges.
---
--- For example:
+-- ranges. The output is already in merged (canonical) form; a subsequent call to
+-- 'mergeRanges' is redundant.
 --
 -- >>> union [1 +=+ 10] [5 +=+ (15 :: Integer)]
 -- [1 +=+ 15]
--- (0.00 secs, 587,152 bytes)
+--
+-- See also 'intersection', 'difference', 'invert'.
 union :: (Ord a) => [Range a] -> [Range a] -> [Range a]
 union a b = Alg.eval $ Alg.union (Alg.const a) (Alg.const b)
 {-# INLINE union #-}
 
 -- | Performs a set intersection between the two input ranges and returns the resultant set of
--- ranges.
---
--- For example:
+-- ranges. The output is already in merged (canonical) form; a subsequent call to
+-- 'mergeRanges' is redundant.
 --
 -- >>> intersection [1 +=* 10] [5 +=+ (15 :: Integer)]
 -- [5 +=* 10]
--- (0.00 secs, 584,616 bytes)
+--
+-- See also 'union', 'difference', 'invert'.
 intersection :: (Ord a) => [Range a] -> [Range a] -> [Range a]
 intersection a b = Alg.eval $ Alg.intersection (Alg.const a) (Alg.const b)
 {-# INLINE intersection #-}
 
 -- | Performs a set difference between the two input ranges and returns the resultant set of
--- ranges.
---
--- For example:
+-- ranges. The output is already in merged (canonical) form; a subsequent call to
+-- 'mergeRanges' is redundant.
 --
 -- >>> difference [1 +=+ 10] [5 +=+ (15 :: Integer)]
 -- [1 +=* 5]
--- (0.00 secs, 590,424 bytes)
+--
+-- See also 'union', 'intersection', 'invert'.
 difference :: (Ord a) => [Range a] -> [Range a] -> [Range a]
 difference a b = Alg.eval $ Alg.difference (Alg.const a) (Alg.const b)
 {-# INLINE difference #-}
 
--- | An inversion function, given a set of ranges it returns the inverse set of ranges.
---
--- For example:
+-- | Returns the complement of the given ranges: all values /not/ covered by any
+-- of the input ranges.
 --
 -- >>> invert [1 +=* 10, 15 *=+ (20 :: Integer)]
 -- [ube 1,10 +=+ 15,lbe 20]
--- (0.00 secs, 623,456 bytes)
+--
+-- Note that @'invert' . 'invert' == 'id'@ for any list of ranges.
+--
+-- See also 'union', 'intersection', 'difference'.
 invert :: (Ord a) => [Range a] -> [Range a]
 invert = Alg.eval . Alg.invert . Alg.const
 {-# INLINE invert #-}
@@ -230,8 +240,10 @@ rangesOverlapType a b = rangesOverlapType b a
 rangesAdjoin :: (Ord a) => Range a -> Range a -> Bool
 rangesAdjoin a b = Adjoin == (rangesOverlapType a b)
 
--- | Given a range and a value it will tell you wether or not the value is in the range.
--- Remember that all ranges are inclusive.
+-- | Given a range and a value, returns 'True' if the value is within the range.
+-- Respects 'Inclusive' and 'Exclusive' bounds.
+--
+-- See also 'inRanges' for testing against a list of ranges.
 --
 -- The primary value of this library is performance and this method can be used to show
 -- this quite clearly. For example, you can try and approximate basic range functionality
@@ -255,8 +267,18 @@ inRange (LowerBoundRange lower) value = Overlap == againstLowerBound (Bound valu
 inRange (UpperBoundRange upper) value = Overlap == againstUpperBound (Bound value Inclusive) upper
 inRange InfiniteRange _ = True
 
--- | Given a list of ranges this function tells you if a value is in any of those ranges.
--- This is especially useful for more complex ranges.
+-- | Returns 'True' if the value falls within any of the given ranges.
+-- This is the primary membership test for the library and is significantly more
+-- performant than approximating it with @'elem' x [lo..hi]@.
+--
+-- >>> inRanges [1 +=+ 10, 20 +=+ 30] (5 :: Integer)
+-- True
+-- >>> inRanges [1 +=+ 10, 20 +=+ 30] (15 :: Integer)
+-- False
+-- >>> inRanges [] (0 :: Integer)
+-- False
+--
+-- See also 'inRange' for testing against a single range.
 inRanges :: (Ord a) => [Range a] -> a -> Bool
 inRanges rs a = any (`inRange` a) rs
 
@@ -287,7 +309,17 @@ aboveRange (LowerBoundRange _)      _     = False
 aboveRange (UpperBoundRange upper)  value = Overlap == againstLowerBound (Bound value Inclusive) (invertBound upper)
 aboveRange InfiniteRange            _     = False
 
--- | Checks if the value provided is above all of the ranges provided.
+-- | Returns 'True' if the value is strictly above (greater than the upper bound of)
+-- all of the given ranges.
+--
+-- >>> aboveRanges [1 +=+ 5, 10 +=+ 15] (20 :: Integer)
+-- True
+-- >>> aboveRanges [1 +=+ 5, lbi 10] (20 :: Integer)
+-- False
+-- >>> aboveRanges [] (0 :: Integer)
+-- True
+--
+-- See also 'aboveRange', 'belowRanges'.
 aboveRanges :: (Ord a) => [Range a] -> a -> Bool
 aboveRanges rs a = all (`aboveRange` a) rs
 
@@ -318,7 +350,17 @@ belowRange (LowerBoundRange lower)  value = Overlap == againstUpperBound (Bound 
 belowRange (UpperBoundRange _)      _     = False
 belowRange InfiniteRange            _     = False
 
--- | Checks if the value provided is below all of the ranges provided.
+-- | Returns 'True' if the value is strictly below (less than the lower bound of)
+-- all of the given ranges.
+--
+-- >>> belowRanges [5 +=+ 10, 20 +=+ 30] (1 :: Integer)
+-- True
+-- >>> belowRanges [ubi 10, 20 +=+ 30] (1 :: Integer)
+-- False
+-- >>> belowRanges [] (0 :: Integer)
+-- True
+--
+-- See also 'belowRange', 'aboveRanges'.
 belowRanges :: (Ord a) => [Range a] -> a -> Bool
 belowRanges rs a = all (`belowRange` a) rs
 
@@ -346,6 +388,8 @@ belowRanges rs a = all (`belowRange` a) rs
 -- @
 -- mergeRanges . union []
 -- @
+--
+-- See also 'joinRanges' for merging ranges that are contiguous for 'Enum' types.
 mergeRanges :: (Ord a) => [Range a] -> [Range a]
 mergeRanges = Alg.eval . Alg.union (Alg.const []) . Alg.const
 {-# INLINE mergeRanges #-}
@@ -419,5 +463,7 @@ fromRanges = takeEvenly . fmap fromRange . mergeRanges
 --
 -- You can use this method to ensure that all ranges for whom the value implements 'Enum' can be
 -- compressed to their smallest representation.
+--
+-- See also 'mergeRanges' for the overlap-only merge that works on any 'Ord' type.
 joinRanges :: (Ord a, Enum a) => [Range a] -> [Range a]
 joinRanges = exportRangeMerge . joinRM . loadRanges

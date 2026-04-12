@@ -109,6 +109,15 @@ Test-Suite test-range
    default-language: Haskell2010
    ghc-options: -rtsopts -Wall -fno-enable-rewrite-rules
 
+test-suite doctest-range
+  type:             exitcode-stdio-1.0
+  main-is:          DocTest.hs
+  build-depends:    base >= 4.7 && < 5
+                  , doctest >= 0.20 && < 1
+                  , range
+  default-language: Haskell2010
+  ghc-options:      -Wall
+
 benchmark bench-range
   type:             exitcode-stdio-1.0
   main-is:          Bench/Range.hs

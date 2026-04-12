@@ -40,12 +40,25 @@ instance Show1 RangeExprF where
     showString " - " .
     showPrec (p + 1) b
 
+-- | An expression tree representing a sequence of set operations on ranges.
+-- Construct trees with 'Data.Range.Algebra.const', 'Data.Range.Algebra.union',
+-- 'Data.Range.Algebra.intersection', 'Data.Range.Algebra.difference', and
+-- 'Data.Range.Algebra.invert', then collapse the tree with 'Data.Range.Algebra.eval'.
+--
+-- The type parameter @a@ is the range representation the tree will eventually
+-- evaluate to (e.g. @['Data.Range.Range' Integer]@ or @Integer -> 'Bool'@).
+--
+-- @RangeExpr@ is a 'Functor', so you can map over the leaf values before evaluation.
 newtype RangeExpr a = RangeExpr { getFree :: Free RangeExprF a }
   deriving (Show, Eq, Functor)
 
--- | This is an F-Algebra. You don't need to know what this is in order to be able
--- to use this module, but, if you are interested you can
--- <https://www.schoolofhaskell.com/user/bartosz/understanding-algebras read more on School of Haskell>.
+-- | The type of an evaluation function for a 'RangeExpr'. You will not normally
+-- need to reference this alias directly; it exists to express the signature of
+-- 'Data.Range.Algebra.eval'.
+--
+-- Concretely, @Algebra f a = f a -> a@, meaning: given a functor @f@ applied to
+-- an already-evaluated @a@, produce the final @a@. The 'Control.Monad.Free.iter'
+-- function from the @free@ package drives the bottom-up fold.
 type Algebra f a = f a -> a
 
 rangeMergeAlgebra :: (Ord a) => Algebra RangeExprF (RangeMerge a)
