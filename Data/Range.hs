@@ -85,17 +85,19 @@
 -- of this. For example, let's say that you want to say: "I accept a version range of [1.1.0, 1.2.1] or [1.3, 1.4) or [1.4, 1.4.2)"
 -- then you can write that as:
 --
--- >>> :m + Data.Version
--- >>> let v x = Version x []
--- >>> let ranges = mergeRanges [v [1, 1, 0] +=+ v [1,2,1], v [1,3] +=* v [1,4], v [1,4] +=* v [1,4,2]]
--- >>> inRanges ranges (v [1,0])
+-- @
+-- \>\>\> :m + Data.Version
+-- \>\>\> let v x = Version x []
+-- \>\>\> let ranges = mergeRanges [v [1, 1, 0] +=+ v [1,2,1], v [1,3] +=* v [1,4], v [1,4] +=* v [1,4,2]]
+-- \>\>\> inRanges ranges (v [1,0])
 -- False
--- >>> inRanges ranges (v [1,5])
+-- \>\>\> inRanges ranges (v [1,5])
 -- False
--- >>> inRanges ranges (v [1,1,5])
+-- \>\>\> inRanges ranges (v [1,1,5])
 -- True
--- >>> inRanges ranges (v [1,3,5])
+-- \>\>\> inRanges ranges (v [1,3,5])
 -- True
+-- @
 --
 -- As you can see, it is almost identical to the previous example, yet you are now comparing if a version is within a version range!
 -- Not only that, but so long as your type is orderable, the ranges can be merged together cleanly.
@@ -249,14 +251,15 @@ rangesAdjoin a b = Adjoin == (rangesOverlapType a b)
 -- this quite clearly. For example, you can try and approximate basic range functionality
 -- with "Data.List.elem" so we can generate an apples to apples comparison in GHCi:
 --
--- >>> :set +s
--- >>> elem (10000000 :: Integer) [1..10000000]
+-- @
+-- \>\>\> :set +s
+-- \>\>\> elem (10000000 :: Integer) [1..10000000]
 -- True
 -- (0.26 secs, 720,556,888 bytes)
--- >>> inRange (1 +=+ 10000000) (10000000 :: Integer)
+-- \>\>\> inRange (1 +=+ 10000000) (10000000 :: Integer)
 -- True
 -- (0.00 secs, 557,656 bytes)
--- >>>
+-- @
 --
 -- As you can see, this function is significantly more performant, in both speed and memory,
 -- than using the elem function.
@@ -369,7 +372,6 @@ belowRanges rs a = all (`belowRange` a) rs
 --
 -- >>> mergeRanges [lbi 12, 1 +=+ 10, 5 +=+ (15 :: Integer)]
 -- [lbi 1]
--- (0.01 secs, 588,968 bytes)
 --
 -- As you can see, the mergeRanges method collapsed multiple ranges into a single range that
 -- still covers the same surface area.
@@ -419,13 +421,11 @@ mergeRanges = Alg.eval . Alg.union (Alg.const []) . Alg.const
 --
 -- >>> take 5 . fromRanges $ [1 +=+ 10 :: Range Integer, 20 +=+ 30]
 -- [1,20,2,21,3]
--- (0.01 secs, 566,016 bytes)
 --
 -- An infinite range:
 --
 -- >>> take 5 . fromRanges $ [inf :: Range Integer]
 -- [0,1,-1,2,-2]
--- (0.00 secs, 566,752 bytes)
 fromRanges :: (Ord a, Enum a) => [Range a] -> [a]
 fromRanges = takeEvenly . fmap fromRange . mergeRanges
    where
