@@ -21,18 +21,20 @@
 --
 -- Evaluate to a concrete list of ranges:
 --
--- >>> import qualified Data.Range.Algebra as A
--- >>> import Data.Range
--- >>> A.eval . A.invert $ A.const [SingletonRange (5 :: Integer)]
--- [ube 4,lbi 6]
+-- @
+-- import qualified Data.Range.Algebra as A
+-- import Data.Range
+-- A.eval . A.invert $ A.const [SingletonRange (5 :: Integer)]
+-- -- [ube 4,lbi 6]
+-- @
 --
 -- Evaluate the same expression as a predicate (no intermediate list is built):
 --
--- >>> let expr = A.union (A.const [1 +=+ 10]) (A.const [20 +=+ 30]) :: A.RangeExpr [Range Integer]
--- >>> (A.eval expr :: Integer -> Bool) 25
--- True
--- >>> (A.eval expr :: Integer -> Bool) 15
--- False
+-- @
+-- let expr = A.union (A.const [1 +=+ 10]) (A.const [20 +=+ 30]) :: A.RangeExpr [Range Integer]
+-- (A.eval expr :: Integer -> Bool) 25  -- True
+-- (A.eval expr :: Integer -> Bool) 15  -- False
+-- @
 --
 module Data.Range.Algebra
   ( -- * Expression trees

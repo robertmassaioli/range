@@ -1,3 +1,4 @@
+{-# LANGUAGE Safe #-}
 module Data.Range.Operators where
 
 import Data.Range.Data

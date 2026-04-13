@@ -5,18 +5,18 @@
 -- By default, ranges are separated by commas and span endpoints by a hyphen:
 --
 -- >>> parseRanges "-5,8-10,13-15,20-" :: Either ParseError [Range Integer]
--- Right [UpperBoundRange (Bound 5 Inclusive),SpanRange (Bound 8 Inclusive) (Bound 10 Inclusive),SpanRange (Bound 13 Inclusive) (Bound 15 Inclusive),LowerBoundRange (Bound 20 Inclusive)]
+-- Right [ubi 5,8 +=+ 10,13 +=+ 15,lbi 20]
 --
 -- The @*@ wildcard produces an infinite range:
 --
 -- >>> parseRanges "*" :: Either ParseError [Range Integer]
--- Right [InfiniteRange]
+-- Right [inf]
 --
 -- Use 'customParseRanges' to change the separator characters:
 --
 -- >>> let args = defaultArgs { unionSeparator = ";", rangeSeparator = ".." }
 -- >>> customParseRanges args "1..5;10" :: Either ParseError [Range Integer]
--- Right [SpanRange (Bound 1 Inclusive) (Bound 5 Inclusive),SingletonRange 10]
+-- Right [1 +=+ 5,SingletonRange 10]
 --
 -- __Known limitations:__
 --
@@ -46,6 +46,10 @@ module Data.Range.Parser
      -- callers do not need to import Parsec directly just to match on parse failures.
    , ParseError
    ) where
+
+-- $setup
+-- >>> import Data.Range
+-- >>> import Data.Range.Parser
 
 import Text.Parsec
 import Text.Parsec.String
@@ -90,7 +94,7 @@ parseRanges = parse (ranges defaultArgs) "(range parser)"
 --
 -- >>> let args = defaultArgs { unionSeparator = ";", rangeSeparator = ".." }
 -- >>> customParseRanges args "1..5;10" :: Either ParseError [Range Integer]
--- Right [SpanRange (Bound 1 Inclusive) (Bound 5 Inclusive),SingletonRange 10]
+-- Right [1 +=+ 5,SingletonRange 10]
 customParseRanges :: Read a => RangeParserArgs -> String -> Either ParseError [Range a]
 customParseRanges args = parse (ranges args) "(range parser)"
 

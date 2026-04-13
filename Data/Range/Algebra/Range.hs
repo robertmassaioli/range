@@ -1,3 +1,4 @@
+{-# LANGUAGE Safe #-}
 module Data.Range.Algebra.Range where
 
 import Data.Range.Data

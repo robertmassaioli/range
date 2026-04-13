@@ -50,6 +50,10 @@ module Data.Ranges (
   joinRanges
 ) where
 
+-- $setup
+-- >>> import Data.Ranges
+-- >>> import Data.Foldable (fold)
+
 import Data.Semigroup
 import qualified Data.Range as R
 

@@ -31,11 +31,14 @@
 --
 -- == Example: sorting ranges by position on the number line
 --
--- >>> import Data.List (sortOn)
--- >>> sortOn SortedRange [lbi 10, 1 +=+ 5, ube 0 :: Range Integer]
--- [ube 0,1 +=+ 5,lbi 10]
---
 -- @
+-- import Data.List (sortOn)
+-- import Data.Range (Range, (+=+), lbi, ube)
+-- import Data.Range.Ord (SortedRange(..))
+--
+-- sortOn SortedRange [lbi 10, 1 +=+ 5, ube 0 :: Range Integer]
+-- -- [ube 0, 1 +=+ 5, lbi 10]
+--
 -- -- or equivalently:
 -- displayRanges :: Ord a => [Range a] -> [Range a]
 -- displayRanges = sortOn SortedRange
@@ -51,6 +54,11 @@ module Data.Range.Ord
      -- the number line (lower bound first, upper bound as tiebreaker).
    , SortedRange(..)
    ) where
+
+-- $setup
+-- >>> import Data.Range
+-- >>> import Data.Range.Ord
+-- >>> import Data.List (sortOn)
 
 import Data.Range.Data
 import Data.Range.Util (compareLower, compareHigher)
@@ -146,8 +154,8 @@ upperExtBound (SingletonRange x)  = FiniteBound (Bound x Inclusive)
 -- Use 'unSortedRange' to unwrap the underlying 'Range'. Typical usage:
 --
 -- >>> import Data.List (sortOn)
--- >>> sortOn SortedRange [lbi 10, 1 +=+ 5, ube 0 :: Range Integer]
--- [ube 0,1 +=+ 5,lbi 10]
+-- >>> sortOn SortedRange [SingletonRange 5, SingletonRange 1, SingletonRange 3 :: Range Integer]
+-- [SingletonRange 1,SingletonRange 3,SingletonRange 5]
 --
 -- See also 'KeyRange' for a structural ordering suitable for 'Data.Map.Map' keys.
 --

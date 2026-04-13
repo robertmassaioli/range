@@ -1,3 +1,4 @@
+{-# LANGUAGE Safe #-}
 module Data.Range.Algebra.Predicate where
 
 import Control.Applicative

@@ -138,6 +138,9 @@ module Data.Range (
       Range(..)
    ) where
 
+-- $setup
+-- >>> import Data.Range
+
 import Data.Range.Data
 import Data.Range.Operators
 import Data.Range.Util
@@ -224,21 +227,20 @@ rangesOverlapType (UpperBoundRange _) (UpperBoundRange _) = Overlap
 rangesOverlapType InfiniteRange _ = Overlap
 rangesOverlapType a b = rangesOverlapType b a
 
--- | A check to see if two ranges overlap or adjoin. The ranges adjoin if no values exist between them.
---  If they do overlap or adjoin then true is returned; false otherwise.
+-- | A check to see if two ranges adjoin. Ranges adjoin if they share no values but touch at a
+-- single boundary point — exactly one of the touching bounds is exclusive.
 --
 -- For example:
 --
--- >>> rangesAdjoin (1 +=+ 5) (3 +=+ 7)
--- True
--- >>> rangesAdjoin (1 +=+ 5) (5 +=+ 7)
--- True
 -- >>> rangesAdjoin (1 +=* 5) (5 +=+ 7)
 -- True
+-- >>> rangesAdjoin (1 +=+ 5) (5 *=+ 7)
+-- True
+-- >>> rangesAdjoin (1 +=+ 5) (3 +=+ 7)
+-- False
 --
--- The last case of these three is the primary "gotcha" of this method. With @[1, 5)@ and @[5, 7]@ there
--- exist no values between them. Therefore the ranges adjoin. If you expected this to return False then
--- it is likely that you would prefer to use 'rangesOverlap' instead.
+-- The third case illustrates the distinction from 'rangesOverlap': @[1, 5]@ and @[3, 7]@ share
+-- values 3–5, so they overlap, not adjoin. See also 'rangesOverlap'.
 rangesAdjoin :: (Ord a) => Range a -> Range a -> Bool
 rangesAdjoin a b = Adjoin == (rangesOverlapType a b)
 
