@@ -235,15 +235,49 @@ counts this library is expected to handle in practice. If profiling later shows
 that `Map` node overhead dominates, migrate to Option B (`Data.Array`) at that
 point — the `boundCmp`-based query logic is identical.
 
-## Expected Gains
+## Baseline Benchmark Results (times to beat)
 
-The existing benchmark already shows the problem clearly:
+Measured on this machine with `stack bench` (GHC 9.10.3, aarch64 macOS).
+All inputs are disjoint sorted spans; the query point is a miss (worst case).
 
-| Spans | Current `inRanges` (miss) | Expected after change |
-|------:|--------------------------|----------------------|
-|    10 | ~10 comparisons          | ~4 comparisons       |
-|   100 | ~100 comparisons         | ~7 comparisons       |
-| 1 000 | ~1 000 comparisons       | ~10 comparisons      |
-| 10 000| ~10 000 comparisons      | ~14 comparisons      |
+### `inRanges` — disjoint spans, miss
 
-(Miss case is worst case; hit case benefits similarly once the span is found.)
+| Spans  | Time      |
+|-------:|----------:|
+|     10 |   181 ns  |
+|    100 |  1.75 μs  |
+|  1 000 |  17.6 μs  |
+| 10 000 |   175 μs  |
+
+Scaling is cleanly linear: 10× more spans → 10× more time. This confirms the
+O(n) behaviour.
+
+### `inRanges` vs `elem` (1 000 and 10 000 spans)
+
+Notably, `inRanges` is currently **slower** than `Data.List.elem` on a flat list
+of the same integers. This is the benchmark called `inRanges/vs-elem`:
+
+| Benchmark          | Time     |
+|:-------------------|---------:|
+| `inRanges`  1 000  |  17.5 μs |
+| `elem`      1 000  |   7.22 μs|
+| `inRanges`  10 000 |   175 μs |
+| `elem`      10 000 |  71.5 μs |
+
+`inRanges` carries ~2.4× overhead vs `elem` at both sizes, despite operating on
+far fewer items (1 000 ranges vs 1 000×width integers). The overhead comes from
+the per-element `inRange` call, bound wrapping, and pattern matching on the `Range`
+constructor. Binary search should not only close this gap but invert it decisively.
+
+### Other relevant baselines
+
+| Benchmark                         | Time     |
+|:----------------------------------|---------:|
+| `inRange` SpanRange (single)      |  14.4 ns |
+| `inRange` LowerBoundRange (single)|   2.06 ns|
+| `inRange` SingletonRange (single) |   401 ps |
+
+A successful implementation of O(log n) lookup over 1 000 disjoint spans should
+complete in roughly 10 × 14.4 ns ≈ **144 ns** (10 span comparisons at `SpanRange`
+cost each). At 10 000 spans, the target is ~14 comparisons ≈ **200 ns** — less
+than the current cost at just 10 spans.
