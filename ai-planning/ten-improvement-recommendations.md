@@ -87,7 +87,7 @@ the effective coverage of the property suite with no new test logic required.
 
 ---
 
-## 4. Add a `Read` instance consistent with the custom `Show`
+## 4. ~~Add a `Read` instance consistent with the custom `Show`~~ [REJECTED]
 
 **Category:** API / Usability
 
