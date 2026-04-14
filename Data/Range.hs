@@ -117,7 +117,6 @@ module Data.Range (
       -- * Comparison functions
       inRange,
       inRanges,
-      inRangesPrebuilt,
       aboveRange,
       aboveRanges,
       belowRange,
@@ -277,6 +276,24 @@ inRange InfiniteRange _ = True
 -- This is the primary membership test for the library and is significantly more
 -- performant than approximating it with @'elem' x [lo..hi]@.
 --
+-- The range list is canonicalised and a 'Data.Map'-backed lookup structure is
+-- built when this function is partially applied to its range argument. This
+-- means that when testing multiple values against the same set of ranges,
+-- partial application amortises the setup cost:
+--
+-- @
+-- -- Efficient: map is built once
+-- let memberOf = inRanges myRanges
+-- filter memberOf largeList
+--
+-- -- Also fine for one-off checks
+-- inRanges myRanges someValue
+-- @
+--
+-- The first argument does not need to be in merged\/canonical form; the
+-- function canonicalises it internally. If the input is already canonical
+-- (e.g. the result of 'mergeRanges'), canonicalisation is a no-op.
+--
 -- >>> inRanges [1 +=+ 10, 20 +=+ 30] (5 :: Integer)
 -- True
 -- >>> inRanges [1 +=+ 10, 20 +=+ 30] (15 :: Integer)
@@ -286,31 +303,9 @@ inRange InfiniteRange _ = True
 --
 -- See also 'inRange' for testing against a single range.
 inRanges :: (Ord a) => [Range a] -> a -> Bool
-inRanges rs val =
-  let v = Bound val Inclusive
-  in case loadRanges rs of
-    IRM         -> True
-    RM lb ub spans ->
-      maybe False (\b -> Overlap == againstUpperBound v b) ub ||
-      maybe False (\b -> Overlap == againstLowerBound v b) lb ||
-      any (\s -> boundCmp v s == EQ) spans
-
--- | Build a membership predicate from a list of ranges, pre-computing an
--- internal 'Data.Map'-backed lookup structure for O(log n) queries.
---
--- Use this when you need to test many values against the same fixed range set.
--- The map is built once when the predicate is constructed; each application is
--- O(log n) rather than O(n).
---
--- >>> let p = inRangesPrebuilt [1 +=+ 10, 20 +=+ 30 :: Range Integer]
--- >>> p 5
--- True
--- >>> p 15
--- False
-inRangesPrebuilt :: (Ord a) => [Range a] -> (a -> Bool)
-inRangesPrebuilt rs =
+inRanges rs =
   case loadRanges rs of
-    IRM         -> const True
+    IRM            -> const True
     RM lb ub spans -> buildSpanQuery lb ub spans
 
 -- | Checks if the value provided is above (or greater than) the biggest value in

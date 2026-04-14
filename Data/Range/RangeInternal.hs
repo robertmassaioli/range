@@ -270,4 +270,4 @@ buildSpanQuery lb ub spans =
           || maybe False (\b -> Overlap == againstLowerBound v b) lb
           || case Map.lookupLE v m of
                Nothing       -> False
-               Just (lo, hi) -> boundCmp v (lo, hi) == EQ
+               Just (lo, hi) -> Overlap == boundIsBetween v (lo, hi)
