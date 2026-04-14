@@ -2,7 +2,7 @@
 
 module Data.Range.Util where
 
-import Data.Maybe (catMaybes)
+import Data.List (transpose)
 
 import Data.Range.Data
 
@@ -128,12 +128,7 @@ againstUpperBound (Bound a aType) (Bound upper upperType)
    | otherwise    = Separate
 
 takeEvenly :: [[a]] -> [a]
-takeEvenly [] = []
-takeEvenly xss = (catMaybes . map safeHead $ xss) ++ takeEvenly (filter (not . null) . map tail $ xss)
-
-safeHead :: [a] -> Maybe a
-safeHead [] = Nothing
-safeHead (x : _) = Just x
+takeEvenly = concat . transpose
 
 pairs :: [a] -> [(a, a)]
 pairs [] = []
