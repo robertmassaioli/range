@@ -106,30 +106,43 @@ reaching for the Parsec-based `Data.Range.Parser`.
 
 ---
 
-## 5. Add `Functor`, `Foldable`, and `Traversable` instances for `Range`
+## 5. Add `Foldable` and `Traversable` instances for `Ranges`
 
 **Category:** Functionality
 
 **Current situation:**  
-`Range a` is a plain `data` type with no `Functor`/`Foldable`/`Traversable`
-instances. Users who want to transform the values inside a range (e.g. map a
-version conversion over a `Range Version`) must pattern-match manually.
+`Functor` is already implemented for both `Range` (`Data/Range/Data.hs`) and
+`Ranges` (`Data/Ranges.hs`). Neither type has `Foldable` or `Traversable`.
+The focus here is `Ranges` (the `newtype` wrapper around `[Range a]`), because
+`Ranges` already enforces the canonical merged form via its `Semigroup`/`Monoid`
+instances, making it the safe place to hang these instances.
 
-**Recommendation:**  
-Derive or write `Functor` and `Foldable` instances, and derive `Traversable` via
-`DeriveTraversable`. `Functor` would allow:
+**Benefits of adding all three to `Ranges`:**
 
-```haskell
-fmap (* 2) (1 +=+ 5 :: Range Int)   -- 2 +=+ 10
-fmap negate (lbi 3 :: Range Int)     -- ube (-3)   -- note: callers must re-merge
-```
+- **`Functor`** (already present) — lets users map a function over every boundary
+  value without touching the structure. Useful for unit conversion, scaling, or
+  lifting ranges into a richer type (e.g. `fmap toVersion intRanges`).
+- **`Foldable`** — unlocks the entire `Data.Foldable` vocabulary: `toList`,
+  `null`, `length`, `minimum`, `maximum`, `any`, `all`, `elem`, `fold`,
+  `foldMap`. For `Ranges` this means folding over the boundary values of all
+  constituent ranges, which is natural for summarising or serialising a range set.
+- **`Traversable`** — enables effectful mapping: `traverse f ranges` applies `f`
+  to every boundary value while accumulating effects (e.g. validating each bound
+  in `Either`, or lifting ranges into `IO`). It also gives `mapAccumL`/`mapAccumR`
+  for stateful transformations and makes `Ranges` compatible with generic
+  traversal libraries.
 
-Document that `fmap` on a `SpanRange` does not automatically preserve the
-`lo <= hi` invariant if the function is not monotone — callers must apply
-`mergeRanges` afterwards when the function may reorder bounds.
+Together, the three instances make `Ranges` a first-class container in the Haskell
+ecosystem, usable anywhere a `Traversable` is expected.
 
-`Foldable` lets users use `toList`, `null`, `length`, `minimum`, `maximum` on
-singleton and span ranges in a natural way.
+**Constraint:**  
+Any implementation that requires the caller to manually call `mergeRanges` (or
+equivalent) after a `fmap` or `traverse` to restore invariants is a non-solution
+and must not be implemented. The instances must either guarantee the result is
+already in canonical form, or restrict the type signature so that only
+invariant-preserving transformations are expressible. The `Ranges` newtype is the
+right home precisely because its smart constructors maintain the canonical form —
+the instances must uphold that contract.
 
 ---
 
