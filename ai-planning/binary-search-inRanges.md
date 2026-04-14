@@ -125,12 +125,115 @@ smart constructors, this is safe.
 5. Update `Bench/Range.hs` to add a `Ranges`-based benchmark alongside the
    existing `[Range a]` benchmark so both paths are covered.
 
-## Optional Future Step: Use `Data.Array` for O(log n) Binary Search
+## Achieving True O(log n): Three Options
 
-Storing `spanRanges` as `Data.Array Int (Bound a, Bound a)` (or `Data.Vector`)
-instead of a list would give true O(log n) index access. This is a larger change
-to `RangeMerge` internals and should be done separately, but the binary search
-logic introduced here transfers directly.
+The `bsearchSpans` implementation above uses `(!!)` on a list, which is still O(n)
+index access — so the overall complexity remains O(n) in the worst case, just with
+a smaller constant. True O(log n) requires a structure with fast random access or a
+tree whose shape encodes the sorted order. Three options follow, in order of
+implementation cost.
+
+### Option A — `Data.Map` from `containers` (recommended)
+
+**New dependency:** `containers` promoted from test-only to library dep. It is
+already an indirect dependency via GHC's boot libraries and is used in the test
+suite, so this is low risk.
+
+Instead of storing `spanRanges` as a list, store the finite spans as
+`Map (Bound a) (Bound a)` keyed by lower bound:
+
+```haskell
+import qualified Data.Map.Strict as Map
+
+-- Query:
+inSpanMap :: Ord a => Bound a -> Map (Bound a) (Bound a) -> Bool
+inSpanMap v m =
+  case Map.lookupLE v m of          -- O(log n): largest lower bound ≤ v
+    Nothing        -> False
+    Just (lo, hi)  -> boundCmp v (lo, hi) == EQ
+```
+
+`Map.lookupLE` descends the internal AVL tree to find the greatest key ≤ the
+query in O(log n). No manual binary search loop is needed — the tree IS the search
+structure. This is the simplest correct implementation and avoids writing any index
+arithmetic.
+
+**Trade-off:** `Map` has higher per-node overhead than a flat array (a pointer and
+two balance tags per entry). For very small span counts (< ~20) a linear list scan
+may outperform a map due to cache effects, but for the 100–10,000 range the tree
+wins clearly.
+
+### Option B — `Data.Array` from `array`
+
+**New dependency:** `array` is a GHC boot package and is always available; it just
+needs adding to `build-depends`. No version constraints are needed beyond `base`.
+
+Convert `spanRanges` to `Array Int (Bound a, Bound a)` at canonicalisation time.
+`(!)` is O(1), so the binary search loop from Step 1 becomes genuinely O(log n):
+
+```haskell
+import Data.Array (Array, listArray, (!), bounds)
+
+bsearchArray :: Ord a => Bound a -> Array Int (Bound a, Bound a) -> Bool
+bsearchArray v arr = go lo hi
+  where
+    (lo, hi) = bounds arr
+    go l h
+      | l > h     = False
+      | otherwise =
+          let mid = l + (h - l) `div` 2
+          in case boundCmp v (arr ! mid) of
+               LT -> go l (mid - 1)
+               EQ -> True
+               GT -> go (mid + 1) h
+```
+
+**Trade-off:** Requires changing the `RangeMerge` internal representation (a larger
+diff than Option A). `Array` is immutable and unparameterised on element type, so
+it is straightforward but slightly more verbose than `Map`. Cache locality is
+excellent for large span counts.
+
+### Option C — `Data.Vector` from `vector`
+
+**New dependency:** `vector` is not currently used anywhere in the library and would
+be a genuine new dependency. It provides `Data.Vector.Vector` with O(1) index
+access and a richer API than `Data.Array`.
+
+```haskell
+import qualified Data.Vector as V
+
+bsearchVector :: Ord a => Bound a -> V.Vector (Bound a, Bound a) -> Bool
+bsearchVector v vec = go 0 (V.length vec - 1)
+  where
+    go lo hi
+      | lo > hi   = False
+      | otherwise =
+          let mid = lo + (hi - lo) `div` 2
+          in case boundCmp v (vec V.! mid) of
+               LT -> go lo (mid - 1)
+               EQ -> True
+               GT -> go (mid + 1) hi
+```
+
+`vector` also provides `Data.Vector.Unboxed` for primitive types (`Int`, `Word`,
+`Char`, etc.), which would halve memory usage and improve cache performance for
+those types. The API (`V.fromList`, `V.length`, `(V.!)`) is more ergonomic than
+`Data.Array`.
+
+**Trade-off:** New dependency that users of the library must also pull in. Only
+justified if benchmarks show a meaningful improvement over Option B, or if the
+`Unboxed` variant matters for the target workload. For a general-purpose library
+with `Ord a` constraints (not just primitives), the boxed `Vector` offers no
+practical advantage over `Array`.
+
+### Recommendation
+
+**Use Option A (`Data.Map`).** It requires the least code change, avoids manual
+index arithmetic, and `containers` is already present in the dependency graph.
+The AVL tree gives O(log n) lookup with acceptable constant factors for the span
+counts this library is expected to handle in practice. If profiling later shows
+that `Map` node overhead dominates, migrate to Option B (`Data.Array`) at that
+point — the `boundCmp`-based query logic is identical.
 
 ## Expected Gains
 
