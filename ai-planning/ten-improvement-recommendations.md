@@ -6,7 +6,7 @@ can be implemented independently.
 
 ---
 
-## 1. Fix O(n²) `takeEvenly` in `Data/Range/Util.hs`
+## 1. ✅ Fix O(n²) `takeEvenly` in `Data/Range/Util.hs` [DONE]
 
 **Category:** Performance
 
