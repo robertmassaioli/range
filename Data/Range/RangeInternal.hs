@@ -3,6 +3,7 @@
 module Data.Range.RangeInternal where
 
 import Data.Maybe (catMaybes)
+import qualified Data.Map.Strict as Map
 
 import Data.Range.Data
 import Data.Range.Spans
@@ -250,3 +251,15 @@ unmergeRM (RM lower upper spans) =
    (maybe [] (\x -> [RM Nothing (Just x) []]) upper) ++
    fmap (\x -> RM Nothing Nothing [x]) spans ++
    (maybe [] (\x -> [RM (Just x) Nothing []]) lower)
+
+-- | O(log n) point membership test over a canonical span list using 'Data.Map'.
+-- Finds the largest lower bound <= the query with 'Map.lookupLE', then checks
+-- whether the query falls within the corresponding upper bound.
+-- Precondition: spans are sorted and non-overlapping (canonical form).
+searchSpans :: Ord a => a -> [(Bound a, Bound a)] -> Bool
+searchSpans val spans =
+  let v = Bound val Inclusive
+      m = Map.fromList spans
+  in case Map.lookupLE v m of
+       Nothing       -> False
+       Just (lo, hi) -> boundCmp v (lo, hi) == EQ

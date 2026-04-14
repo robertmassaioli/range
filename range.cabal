@@ -82,6 +82,7 @@ library
                   , parsec >= 3 && < 4
                   , free >= 4.12 && < 6
                   , deepseq >= 1.4 && < 2
+                  , containers >= 0.5 && < 1
 
   default-language: Haskell2010
   ghc-options: -Wall

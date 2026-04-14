@@ -144,7 +144,7 @@ module Data.Range (
 import Data.Range.Data
 import Data.Range.Operators
 import Data.Range.Util
-import Data.Range.RangeInternal (exportRangeMerge, joinRM, loadRanges)
+import Data.Range.RangeInternal (exportRangeMerge, joinRM, loadRanges, RangeMerge(..), searchSpans)
 import qualified Data.Range.Algebra as Alg
 
 -- | Performs a set union between the two input ranges and returns the resultant set of
@@ -285,7 +285,14 @@ inRange InfiniteRange _ = True
 --
 -- See also 'inRange' for testing against a single range.
 inRanges :: (Ord a) => [Range a] -> a -> Bool
-inRanges rs a = any (`inRange` a) rs
+inRanges rs val =
+  let v = Bound val Inclusive
+  in case loadRanges rs of
+    IRM    -> True
+    RM lb ub spans ->
+      maybe False (\b -> Overlap == againstUpperBound v b) ub ||
+      maybe False (\b -> Overlap == againstLowerBound v b) lb ||
+      searchSpans val spans
 
 -- | Checks if the value provided is above (or greater than) the biggest value in
 -- the given range.
