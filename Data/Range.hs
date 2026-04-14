@@ -117,6 +117,7 @@ module Data.Range (
       -- * Comparison functions
       inRange,
       inRanges,
+      inRangesPrebuilt,
       aboveRange,
       aboveRanges,
       belowRange,
@@ -144,7 +145,7 @@ module Data.Range (
 import Data.Range.Data
 import Data.Range.Operators
 import Data.Range.Util
-import Data.Range.RangeInternal (exportRangeMerge, joinRM, loadRanges, RangeMerge(..), searchSpans)
+import Data.Range.RangeInternal (exportRangeMerge, joinRM, loadRanges, RangeMerge(..), buildSpanQuery)
 import qualified Data.Range.Algebra as Alg
 
 -- | Performs a set union between the two input ranges and returns the resultant set of
@@ -288,11 +289,29 @@ inRanges :: (Ord a) => [Range a] -> a -> Bool
 inRanges rs val =
   let v = Bound val Inclusive
   in case loadRanges rs of
-    IRM    -> True
+    IRM         -> True
     RM lb ub spans ->
       maybe False (\b -> Overlap == againstUpperBound v b) ub ||
       maybe False (\b -> Overlap == againstLowerBound v b) lb ||
-      searchSpans val spans
+      any (\s -> boundCmp v s == EQ) spans
+
+-- | Build a membership predicate from a list of ranges, pre-computing an
+-- internal 'Data.Map'-backed lookup structure for O(log n) queries.
+--
+-- Use this when you need to test many values against the same fixed range set.
+-- The map is built once when the predicate is constructed; each application is
+-- O(log n) rather than O(n).
+--
+-- >>> let p = inRangesPrebuilt [1 +=+ 10, 20 +=+ 30 :: Range Integer]
+-- >>> p 5
+-- True
+-- >>> p 15
+-- False
+inRangesPrebuilt :: (Ord a) => [Range a] -> (a -> Bool)
+inRangesPrebuilt rs =
+  case loadRanges rs of
+    IRM         -> const True
+    RM lb ub spans -> buildSpanQuery lb ub spans
 
 -- | Checks if the value provided is above (or greater than) the biggest value in
 -- the given range.
