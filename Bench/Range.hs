@@ -47,6 +47,11 @@ main = do
   ds100   <- evaluate . force $ disjointSpans 100
   ds1000  <- evaluate . force $ disjointSpans 1000
   ds10000 <- evaluate . force $ disjointSpans 10000
+  -- Pre-build lookup predicates (structure built once, only lookup is benchmarked)
+  pb10    <- evaluate $ inRangesPrebuilt ds10
+  pb100   <- evaluate $ inRangesPrebuilt ds100
+  pb1000  <- evaluate $ inRangesPrebuilt ds1000
+  pb10000 <- evaluate $ inRangesPrebuilt ds10000
   os10    <- evaluate . force $ overlappingSpans 10
   os100   <- evaluate . force $ overlappingSpans 100
   os1000  <- evaluate . force $ overlappingSpans 1000
@@ -70,6 +75,12 @@ main = do
             , bench "100"   $ whnf (inRanges ds100)   299
             , bench "1000"  $ whnf (inRanges ds1000)  2999
             , bench "10000" $ whnf (inRanges ds10000) 29999
+            ]
+        , bgroup "inRangesPrebuilt/disjoint-spans"
+            [ bench "10"    $ whnf pb10    29
+            , bench "100"   $ whnf pb100   299
+            , bench "1000"  $ whnf pb1000  2999
+            , bench "10000" $ whnf pb10000 29999
             ]
         , bgroup "inRanges/vs-elem"
             -- Checking for the last element — worst case for both

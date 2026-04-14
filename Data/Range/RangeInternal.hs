@@ -1,8 +1,10 @@
 {-# LANGUAGE Safe #-}
+{-# LANGUAGE BangPatterns #-}
 
 module Data.Range.RangeInternal where
 
 import Data.Maybe (catMaybes)
+import qualified Data.Map.Strict as Map
 
 import Data.Range.Data
 import Data.Range.Spans
@@ -250,3 +252,22 @@ unmergeRM (RM lower upper spans) =
    (maybe [] (\x -> [RM Nothing (Just x) []]) upper) ++
    fmap (\x -> RM Nothing Nothing [x]) spans ++
    (maybe [] (\x -> [RM (Just x) Nothing []]) lower)
+
+-- | Pre-build a 'Data.Map'-backed lookup structure from a canonical span list,
+-- returning an O(log n) membership predicate. Build the map once; apply the
+-- returned function for every subsequent query.
+-- Precondition: spans are sorted and non-overlapping (canonical form).
+buildSpanQuery :: Ord a
+               => Maybe (Bound a)       -- ^ largest lower bound (semi-infinite tail)
+               -> Maybe (Bound a)       -- ^ largest upper bound (semi-infinite tail)
+               -> [(Bound a, Bound a)]  -- ^ canonical finite spans
+               -> (a -> Bool)
+buildSpanQuery lb ub spans =
+  let !m = Map.fromList spans
+  in \val ->
+       let v = Bound val Inclusive
+       in maybe False (\b -> Overlap == againstUpperBound v b) ub
+          || maybe False (\b -> Overlap == againstLowerBound v b) lb
+          || case Map.lookupLE v m of
+               Nothing       -> False
+               Just (lo, hi) -> boundCmp v (lo, hi) == EQ
