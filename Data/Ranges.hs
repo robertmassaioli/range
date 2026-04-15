@@ -1,6 +1,6 @@
 {-# LANGUAGE Safe #-}
 
--- | This module provides a 'Newtype' wrapper around @['Data.Range.Range' a]@ that
+-- | This module provides the 'Ranges' type — a wrapper around @['Data.Range.Range' a]@ that
 -- integrates with standard Haskell type classes, making it easy to accumulate and
 -- compose ranges using familiar idioms.
 --
@@ -54,7 +54,6 @@ module Data.Ranges (
 -- >>> import Data.Ranges
 -- >>> import Data.Foldable (fold)
 
-import Data.Semigroup
 import qualified Data.Range as R
 
 -- | Smart constructor. Canonicalises the range list and pre-builds the cached
@@ -113,7 +112,6 @@ instance Ord a => Semigroup (Ranges a) where
 -- because it merges all ranges in a single pass.
 instance Ord a => Monoid (Ranges a) where
    mempty = mkRanges []
-   mappend a b = mkRanges $ unRanges a ++ unRanges b
    mconcat = mkRanges . concat . fmap unRanges
 
 -- | Maps a function over every boundary value in every range.
