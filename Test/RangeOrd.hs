@@ -16,6 +16,30 @@ import Data.Range.Ord
 import Test.Generators ()
 
 -- ---------------------------------------------------------------------------
+-- Local helpers — the module-level operators now return Ranges, not Range
+-- ---------------------------------------------------------------------------
+
+-- | Inclusive span Range
+spanI :: a -> a -> Range a
+spanI a b = SpanRange (Bound a Inclusive) (Bound b Inclusive)
+
+-- | Lower bound inclusive Range
+lbiR :: a -> Range a
+lbiR x = LowerBoundRange (Bound x Inclusive)
+
+-- | Upper bound inclusive Range
+ubiR :: a -> Range a
+ubiR x = UpperBoundRange (Bound x Inclusive)
+
+-- | Upper bound exclusive Range
+ubeR :: a -> Range a
+ubeR x = UpperBoundRange (Bound x Exclusive)
+
+-- | Infinite Range
+infR :: Range a
+infR = InfiniteRange
+
+-- ---------------------------------------------------------------------------
 -- Helpers
 -- ---------------------------------------------------------------------------
 
@@ -35,19 +59,19 @@ sortEqOrdConsistent x y = (x == y) == (compare x y == EQ)
 --                       UpperBoundRange < InfiniteRange
 prop_key_constructor_singleton_lt_span :: Bool
 prop_key_constructor_singleton_lt_span =
-   KeyRange (SingletonRange (0 :: Integer)) < KeyRange (0 +=+ 0)
+   KeyRange (SingletonRange (0 :: Integer)) < KeyRange (spanI 0 0)
 
 prop_key_constructor_span_lt_lower :: Bool
 prop_key_constructor_span_lt_lower =
-   KeyRange (0 +=+ (0 :: Integer)) < KeyRange (lbi 0)
+   KeyRange (spanI 0 (0 :: Integer)) < KeyRange (lbiR 0)
 
 prop_key_constructor_lower_lt_upper :: Bool
 prop_key_constructor_lower_lt_upper =
-   KeyRange (lbi (0 :: Integer)) < KeyRange (ubi 0)
+   KeyRange (lbiR (0 :: Integer)) < KeyRange (ubiR 0)
 
 prop_key_constructor_upper_lt_infinite :: Bool
 prop_key_constructor_upper_lt_infinite =
-   KeyRange (ubi (0 :: Integer)) < KeyRange (inf :: Range Integer)
+   KeyRange (ubiR (0 :: Integer)) < KeyRange (infR :: Range Integer)
 
 -- Within the same constructor, compare by fields
 prop_key_singletons_by_value :: Bool
@@ -56,23 +80,23 @@ prop_key_singletons_by_value =
 
 prop_key_spans_by_lower_first :: Bool
 prop_key_spans_by_lower_first =
-   KeyRange ((1 :: Integer) +=+ 10) < KeyRange (2 +=+ 10)
+   KeyRange (spanI (1 :: Integer) 10) < KeyRange (spanI 2 10)
 
 prop_key_spans_by_upper_on_equal_lower :: Bool
 prop_key_spans_by_upper_on_equal_lower =
-   KeyRange ((1 :: Integer) +=+ 5) < KeyRange (1 +=+ 10)
+   KeyRange (spanI (1 :: Integer) 5) < KeyRange (spanI 1 10)
 
 prop_key_lower_bounds_by_value :: Bool
 prop_key_lower_bounds_by_value =
-   KeyRange (lbi (1 :: Integer)) < KeyRange (lbi 2)
+   KeyRange (lbiR (1 :: Integer)) < KeyRange (lbiR 2)
 
 prop_key_upper_bounds_by_value :: Bool
 prop_key_upper_bounds_by_value =
-   KeyRange (ubi (1 :: Integer)) < KeyRange (ubi 2)
+   KeyRange (ubiR (1 :: Integer)) < KeyRange (ubiR 2)
 
 prop_key_infinite_eq_infinite :: Bool
 prop_key_infinite_eq_infinite =
-   compare (KeyRange (inf :: Range Integer)) (KeyRange inf) == EQ
+   compare (KeyRange (infR :: Range Integer)) (KeyRange infR) == EQ
 
 test_keyrange_unit :: Test
 test_keyrange_unit = testGroup "KeyRange unit"
@@ -132,11 +156,11 @@ test_keyrange_properties = testGroup "KeyRange properties"
 -- Ranges with NegInfinity lower bound sort before those with a finite lower bound
 prop_sorted_upper_before_span :: Bool
 prop_sorted_upper_before_span =
-   SortedRange (ubi (0 :: Integer)) < SortedRange (lbi 0)
+   SortedRange (ubiR (0 :: Integer)) < SortedRange (lbiR 0)
 
 prop_sorted_infinite_before_lower :: Bool
 prop_sorted_infinite_before_lower =
-   SortedRange (inf :: Range Integer) < SortedRange (lbi 1)
+   SortedRange (infR :: Range Integer) < SortedRange (lbiR 1)
 
 -- Spans ordered by lower bound
 prop_sorted_singletons_by_value :: Bool
@@ -145,24 +169,24 @@ prop_sorted_singletons_by_value =
 
 prop_sorted_spans_by_lower :: Bool
 prop_sorted_spans_by_lower =
-   SortedRange ((1 :: Integer) +=+ 10) < SortedRange (2 +=+ 10)
+   SortedRange (spanI (1 :: Integer) 10) < SortedRange (spanI 2 10)
 
 -- When lower bounds are equal, tiebreak by upper bound (smaller upper = comes first)
 prop_sorted_tiebreak_by_upper :: Bool
 prop_sorted_tiebreak_by_upper =
-   SortedRange ((1 :: Integer) +=+ 5) < SortedRange (1 +=+ 10)
+   SortedRange (spanI (1 :: Integer) 5) < SortedRange (spanI 1 10)
 
 -- InfiniteRange and UpperBoundRange both start at -∞;
 -- InfiniteRange ends at +∞ so it sorts after a finite UpperBoundRange
 prop_sorted_upper_before_infinite :: Bool
 prop_sorted_upper_before_infinite =
-   SortedRange (ubi (0 :: Integer)) < SortedRange (inf :: Range Integer)
+   SortedRange (ubiR (0 :: Integer)) < SortedRange (infR :: Range Integer)
 
 -- The canonical display order: UpperBoundRange, SpanRange, LowerBoundRange
 prop_sorted_display_order :: Bool
 prop_sorted_display_order =
-   sortOn SortedRange [lbi 10, (1 :: Integer) +=+ 5, ube 0]
-   == [ube 0, 1 +=+ 5, lbi 10]
+   sortOn SortedRange [lbiR 10, spanI (1 :: Integer) 5, ubeR 0]
+   == [ubeR 0, spanI 1 5, lbiR 10]
 
 -- SingletonRange 5 and 5 +=+ 5 occupy the same position so compare as EQ
 prop_sorted_singleton_eq_degenerate_span :: Bool

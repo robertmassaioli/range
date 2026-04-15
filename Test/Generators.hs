@@ -23,11 +23,14 @@ instance (Num a, Integral a, Ord a, Enum a) => Arbitrary (Range a) where
          generateSpan = do
             first <- arbitrarySizedIntegral
             second <- arbitrarySizedIntegral `suchThat` (> first)
-            return $ first +=+ second
-         generateLowerBound = liftM lbi arbitrarySizedIntegral
-         generateUpperBound = liftM ubi arbitrarySizedIntegral
+            return $ SpanRange (Bound first Inclusive) (Bound second Inclusive)
+         generateLowerBound = liftM (\x -> LowerBoundRange (Bound x Inclusive)) arbitrarySizedIntegral
+         generateUpperBound = liftM (\x -> UpperBoundRange (Bound x Inclusive)) arbitrarySizedIntegral
          generateInfiniteRange :: Gen (Range a)
          generateInfiniteRange = return InfiniteRange
+
+instance (Num a, Integral a, Ord a, Enum a) => Arbitrary (Ranges a) where
+  arbitrary = mergeRanges <$> listOf arbitrary
 
 instance (Num a, Integral a, Ord a, Enum a) => Arbitrary (Alg.RangeExpr [Range a]) where
   arbitrary = frequency

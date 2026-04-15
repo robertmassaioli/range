@@ -48,13 +48,6 @@ data Range a
 
 instance NFData a => NFData (Range a)
 
-instance Functor Range where
-   fmap f (SingletonRange x) = SingletonRange . f $ x
-   fmap f (SpanRange x y) = SpanRange (fmap f x) (fmap f y)
-   fmap f (LowerBoundRange x) = LowerBoundRange (fmap f x)
-   fmap f (UpperBoundRange x) = UpperBoundRange (fmap f x)
-   fmap _ InfiniteRange = InfiniteRange
-
 instance Show a => Show (Range a) where
    showsPrec i (SingletonRange a) = ((++) "SingletonRange ") . showsPrec i a
    showsPrec i (SpanRange (Bound l lType) (Bound r rType)) =

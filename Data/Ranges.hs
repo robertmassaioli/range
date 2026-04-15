@@ -1,28 +1,63 @@
 {-# LANGUAGE Safe #-}
 
--- | This module provides the 'Ranges' type — a wrapper around @['Data.Range.Range' a]@ that
--- integrates with standard Haskell type classes, making it easy to accumulate and
--- compose ranges using familiar idioms.
+-- | The primary interface to the range library.
 --
--- The primary advantage over "Data.Range" is that 'Ranges' implements 'Semigroup'
--- and 'Monoid', where @('<>')@ means /union-and-merge/. This composes naturally with
--- standard Haskell functions:
+-- A 'Range' describes a membership set over any 'Ord' type. This module
+-- provides the 'Ranges' type — a canonicalised, indexed collection of
+-- 'Range' values — along with construction operators, set operations, and
+-- membership predicates.
 --
--- >>> import Data.Foldable (fold)
--- >>> fold [1 +=+ 5, 3 +=+ 8, lbi 20 :: Ranges Integer]
--- Ranges [1 +=+ 8,lbi 20]
+-- = Quick start
+--
+-- Build ranges with the construction operators and combine them with @('<>')@:
+--
+-- >>> (1 +=+ 5 :: Ranges Integer) <> (3 +=+ 8)
+-- Ranges [1 +=+ 8]
+--
+-- Test membership:
+--
+-- >>> inRanges (1 +=+ 10 <> 20 +=+ 30 :: Ranges Integer) 5
+-- True
+-- >>> inRanges (1 +=+ 10 <> 20 +=+ 30 :: Ranges Integer) 15
+-- False
+--
+-- Use 'mconcat' to build from a list:
 --
 -- >>> mconcat [1 +=+ 5, 10 +=+ 15, 12 +=+ 20 :: Ranges Integer]
 -- Ranges [1 +=+ 5,10 +=+ 20]
 --
--- __When to use this module vs "Data.Range":__
+-- = Transforming ranges
 --
--- * Use "Data.Range" when working with @['Range' a]@ directly or calling individual
---   set operations like 'union' and 'intersection'.
--- * Use this module when you want 'Monoid' / 'Semigroup' semantics, need 'Functor'
---   to map over all range boundaries, or are threading ranges through code that
---   expects a 'Monoid' (e.g. 'mconcat', 'fold', writer-style accumulation).
+-- 'Ranges' does not implement 'Functor'. Mapping a function over boundary
+-- values is not a well-defined operation for half-infinite ranges: an
+-- order-reversing function like @negate@ applied to 'lbi' would need to
+-- produce 'ubi', but 'Functor' cannot express that structural flip.
+--
+-- The idiomatic alternative is to __map the query value__, not the ranges.
+-- Instead of converting boundaries to a new domain, convert incoming queries
+-- back to the range's domain:
+--
+-- @
+-- -- Unit conversion: test a Fahrenheit value against Celsius ranges
+-- let safeTemp = 20 +=+ 37 :: Ranges Double  -- defined in °C
+-- let inSafeTemp f = inRanges safeTemp ((f - 32) * 5 / 9)
+-- @
+--
+-- This is always correct regardless of whether the conversion is monotone,
+-- never requires re-canonicalisation, and avoids the constructor-flip hazard.
+--
+-- = Module guide
+--
+-- * "Data.Ranges" — __start here__. 'Ranges' type, all set operations.
+-- * "Data.Range" — deprecated re-export shim; use "Data.Ranges" instead.
+-- * "Data.Range.Ord" — 'Data.Range.Ord.KeyRange' and 'Data.Range.Ord.SortedRange' for 'Ord'-requiring contexts.
+-- * "Data.Range.Parser" — Parsec-based parser for range strings.
+-- * "Data.Range.Algebra" — F-Algebra for deferred, efficient expression trees.
 module Data.Ranges (
+  -- * Core types
+  Range(..),
+  Bound(..),
+  BoundType(..),
   -- * The Ranges type
   Ranges(unRanges),
   -- * Range creation
@@ -36,11 +71,18 @@ module Data.Ranges (
   ubi,
   ube,
   inf,
-  -- * Comparison functions
+  -- * Single-range predicates
+  inRange,
+  aboveRange,
+  belowRange,
+  rangesOverlap,
+  rangesAdjoin,
+  -- * Multi-range predicates
   inRanges,
   aboveRanges,
   belowRanges,
   -- * Set operations
+  mergeRanges,
   union,
   intersection,
   difference,
@@ -54,14 +96,39 @@ module Data.Ranges (
 -- >>> import Data.Ranges
 -- >>> import Data.Foldable (fold)
 
-import qualified Data.Range as R
+import Data.Range.Data
+import Data.Range.Util
+  ( againstLowerBound, againstUpperBound, boundIsBetween, boundsOverlapType
+  , invertBound, pointJoinType, takeEvenly
+  )
+import Data.Range.RangeInternal
+  ( loadRanges, exportRangeMerge, joinRM, buildSpanQuery
+  , RangeMerge(..)
+  )
+import qualified Data.Range.Operators as Op
+import qualified Data.Range.Algebra as Alg
 
--- | Smart constructor. Canonicalises the range list and pre-builds the cached
--- lookup predicate. All internal paths that produce a 'Ranges' go through this.
-mkRanges :: Ord a => [R.Range a] -> Ranges a
+-- ---------------------------------------------------------------------------
+-- Internal helpers
+-- ---------------------------------------------------------------------------
+
+-- | Build an O(log n) membership predicate from a canonical range list.
+buildQuery :: Ord a => [Range a] -> a -> Bool
+buildQuery rs = case loadRanges rs of
+  IRM            -> const True
+  RM lb ub spans -> buildSpanQuery lb ub spans
+
+-- | Smart constructor. Canonicalises the range list and pre-builds the
+-- membership predicate. Every 'Ranges' value in this module is produced
+-- through this function.
+mkRanges :: Ord a => [Range a] -> Ranges a
 mkRanges xs =
-  let canonical = R.mergeRanges xs
-  in Ranges canonical (Just (R.inRanges canonical))
+  let canonical = Alg.eval $ Alg.union (Alg.const []) (Alg.const xs)
+  in Ranges canonical (buildQuery canonical)
+
+-- ---------------------------------------------------------------------------
+-- The Ranges type
+-- ---------------------------------------------------------------------------
 
 -- $creation
 -- Each operator constructs a single-element 'Ranges'. Because 'Ranges' is a
@@ -70,121 +137,188 @@ mkRanges xs =
 -- >>> (1 +=+ 5 :: Ranges Integer) <> (3 +=+ 8)
 -- Ranges [1 +=+ 8]
 --
--- The operators mirror those in "Data.Range" but return 'Ranges' instead of
--- @'R.Range'@, so they compose naturally without wrapping and unwrapping.
+-- The operators mirror those in "Data.Range.Operators" but return 'Ranges'
+-- instead of 'Range', so they compose naturally without wrapping.
 
 -- | A set of ranges represented as a merged, canonical list of
--- non-overlapping 'R.Range' values.
+-- non-overlapping 'Range' values, with a pre-built O(log n) membership
+-- predicate.
 --
--- The 'Semigroup' instance merges ranges on @('<>')@:
+-- Construct values with the operators ('+=+', 'lbi', etc.) or with
+-- 'mergeRanges'. Combine with @('<>')@ or 'mconcat'.
+--
+-- __Semigroup__: @('<>')@ computes the set union and merges the result into
+-- canonical form.
 --
 -- >>> (1 +=+ 5 :: Ranges Integer) <> (3 +=+ 8)
 -- Ranges [1 +=+ 8]
 --
--- 'mempty' is the empty set (no ranges). 'mconcat' merges an entire list at once,
--- which is more efficient than repeated @('<>')@:
+-- __Monoid__: 'mempty' is the empty set. 'mconcat' merges an entire list in a
+-- single pass, more efficiently than repeated @('<>')@:
 --
 -- >>> mconcat [1 +=+ 5, 10 +=+ 15, 12 +=+ 20 :: Ranges Integer]
 -- Ranges [1 +=+ 5,10 +=+ 20]
 --
--- The 'Functor' instance maps a function over every boundary value in every range:
---
--- >>> fmap (*2) (1 +=+ 5 :: Ranges Integer)
--- Ranges [2 +=+ 10]
---
--- Use 'unRanges' to extract the underlying list. Do not construct 'Ranges'
--- directly; use the operators or set-operation functions so that the cached
--- lookup structure is always kept consistent.
+-- Use 'unRanges' to extract the underlying list.
 data Ranges a = Ranges
-  { unRanges     :: [R.Range a]     -- ^ The canonical (sorted, non-overlapping) range list.
-  , _rangesQuery :: Maybe (a -> Bool) -- ^ Cached O(log n) predicate; Nothing after 'fmap'.
+  { unRanges     :: [Range a]  -- ^ The canonical (sorted, non-overlapping) list.
+  , _rangesQuery :: a -> Bool  -- ^ Cached O(log n) membership predicate.
   }
 
 instance Show a => Show (Ranges a) where
-   showsPrec i r = ((++) "Ranges ") . showsPrec i (unRanges r)
+  showsPrec i r = (("Ranges " ++) . showsPrec i (unRanges r))
 
--- | @('<>')@ computes the set union of two 'Ranges' and merges the result into
--- canonical (non-overlapping) form. Associative, with 'mempty' as the identity.
 instance Ord a => Semigroup (Ranges a) where
-   (<>) a b = mkRanges $ unRanges a ++ unRanges b
+  (<>) a b = mkRanges (unRanges a ++ unRanges b)
 
--- | 'mempty' is the empty set. 'mconcat' is more efficient than folding '<>'
--- because it merges all ranges in a single pass.
 instance Ord a => Monoid (Ranges a) where
-   mempty = mkRanges []
-   mconcat = mkRanges . concat . fmap unRanges
+  mempty  = mkRanges []
+  mconcat = mkRanges . concatMap unRanges
 
--- | Maps a function over every boundary value in every range.
--- Note that mapping a non-monotonic function can produce ill-formed ranges
--- (e.g. a span whose lower bound ends up greater than its upper bound).
--- Use with care on ordered types.
+-- ---------------------------------------------------------------------------
+-- Construction operators
+-- ---------------------------------------------------------------------------
+
+-- | Mathematically equivalent to @[x, y]@. See 'SpanRange' for the
+-- underlying constructor.
 --
--- The cached lookup predicate cannot be pre-built here because 'Functor' does
--- not allow an 'Ord' constraint. Calling 'inRanges' on the result will still
--- pre-build the map on partial application via 'Data.Range.inRanges'.
-instance Functor Ranges where
-   fmap f r = Ranges (fmap (fmap f) (unRanges r)) Nothing
-
--- | Mathematically equivalent to @[x, y]@. See 'R.+=+' for details.
+-- >>> 1 +=+ 5 :: Ranges Integer
+-- Ranges [1 +=+ 5]
 (+=+) :: Ord a => a -> a -> Ranges a
-(+=+) a b = mkRanges . pure $ (R.+=+) a b
+(+=+) a b = mkRanges [(Op.+=+) a b]
 
--- | Mathematically equivalent to @[x, y)@. See 'R.+=*' for details.
+-- | Mathematically equivalent to @[x, y)@.
+--
+-- >>> 1 +=* 5 :: Ranges Integer
+-- Ranges [1 +=* 5]
 (+=*) :: Ord a => a -> a -> Ranges a
-(+=*) a b = mkRanges . pure $ (R.+=*) a b
+(+=*) a b = mkRanges [(Op.+=*) a b]
 
--- | Mathematically equivalent to @(x, y]@. See 'R.*=+' for details.
+-- | Mathematically equivalent to @(x, y]@.
+--
+-- >>> 1 *=+ 5 :: Ranges Integer
+-- Ranges [1 *=+ 5]
 (*=+) :: Ord a => a -> a -> Ranges a
-(*=+) a b = mkRanges . pure $ (R.*=+) a b
+(*=+) a b = mkRanges [(Op.*=+) a b]
 
--- | Mathematically equivalent to @(x, y)@. See 'R.*=*' for details.
+-- | Mathematically equivalent to @(x, y)@.
+--
+-- >>> 1 *=* 5 :: Ranges Integer
+-- Ranges [1 *=* 5]
 (*=*) :: Ord a => a -> a -> Ranges a
-(*=*) a b = mkRanges . pure $ (R.*=*) a b
+(*=*) a b = mkRanges [(Op.*=*) a b]
 
--- | Mathematically equivalent to @[x, ∞)@. See 'R.lbi' for details.
+-- | Mathematically equivalent to @[x, ∞)@.
+--
+-- >>> lbi 5 :: Ranges Integer
+-- Ranges [lbi 5]
 lbi :: Ord a => a -> Ranges a
-lbi = mkRanges . pure . R.lbi
+lbi = mkRanges . (:[]) . Op.lbi
 
--- | Mathematically equivalent to @(x, ∞)@. See 'R.lbe' for details.
+-- | Mathematically equivalent to @(x, ∞)@.
 lbe :: Ord a => a -> Ranges a
-lbe = mkRanges . pure . R.lbe
+lbe = mkRanges . (:[]) . Op.lbe
 
--- | Mathematically equivalent to @(−∞, x]@. See 'R.ubi' for details.
+-- | Mathematically equivalent to @(−∞, x]@.
 ubi :: Ord a => a -> Ranges a
-ubi = mkRanges . pure . R.ubi
+ubi = mkRanges . (:[]) . Op.ubi
 
--- | Mathematically equivalent to @(−∞, x)@. See 'R.ube' for details.
+-- | Mathematically equivalent to @(−∞, x)@.
 ube :: Ord a => a -> Ranges a
-ube = mkRanges . pure . R.ube
+ube = mkRanges . (:[]) . Op.ube
 
--- | The infinite range, covering all values. See 'R.inf' for details.
+-- | The infinite range, covering all values.
 inf :: Ord a => Ranges a
-inf = mkRanges [R.inf]
+inf = mkRanges [Op.inf]
+
+-- ---------------------------------------------------------------------------
+-- Single-range predicates
+-- ---------------------------------------------------------------------------
+
+-- | Returns 'True' if the value falls within the single range.
+-- Respects 'Inclusive' and 'Exclusive' bounds.
+--
+-- See 'inRanges' for testing against a 'Ranges' collection.
+--
+-- >>> inRange (SpanRange (Bound 1 Inclusive) (Bound 10 Inclusive)) (5 :: Integer)
+-- True
+-- >>> inRange (SpanRange (Bound 1 Inclusive) (Bound 10 Exclusive)) (10 :: Integer)
+-- False
+inRange :: Ord a => Range a -> a -> Bool
+inRange (SingletonRange a)      value = value == a
+inRange (SpanRange x y)         value = Overlap == boundIsBetween (Bound value Inclusive) (x, y)
+inRange (LowerBoundRange lower) value = Overlap == againstLowerBound (Bound value Inclusive) lower
+inRange (UpperBoundRange upper) value = Overlap == againstUpperBound (Bound value Inclusive) upper
+inRange InfiniteRange           _     = True
+
+-- | Returns 'True' if the value is strictly above (greater than the upper
+-- bound of) the given range.
+--
+-- >>> aboveRange (SpanRange (Bound 1 Inclusive) (Bound 5 Inclusive)) (6 :: Integer)
+-- True
+-- >>> aboveRange (LowerBoundRange (Bound 0 Inclusive)) (6 :: Integer)
+-- False
+aboveRange :: Ord a => Range a -> a -> Bool
+aboveRange (SingletonRange a)      value = value > a
+aboveRange (SpanRange _ y)         value = Overlap == againstLowerBound (Bound value Inclusive) (invertBound y)
+aboveRange (LowerBoundRange _)     _     = False
+aboveRange (UpperBoundRange upper) value = Overlap == againstLowerBound (Bound value Inclusive) (invertBound upper)
+aboveRange InfiniteRange           _     = False
+
+-- | Returns 'True' if the value is strictly below (less than the lower
+-- bound of) the given range.
+--
+-- >>> belowRange (SpanRange (Bound 1 Inclusive) (Bound 5 Inclusive)) (0 :: Integer)
+-- True
+-- >>> belowRange (UpperBoundRange (Bound 6 Inclusive)) (0 :: Integer)
+-- False
+belowRange :: Ord a => Range a -> a -> Bool
+belowRange (SingletonRange a)      value = value < a
+belowRange (SpanRange x _)         value = Overlap == againstUpperBound (Bound value Inclusive) (invertBound x)
+belowRange (LowerBoundRange lower) value = Overlap == againstUpperBound (Bound value Inclusive) (invertBound lower)
+belowRange (UpperBoundRange _)     _     = False
+belowRange InfiniteRange           _     = False
+
+-- | Returns 'True' if two ranges share at least one value.
+--
+-- >>> rangesOverlap (SpanRange (Bound 1 Inclusive) (Bound 5 Inclusive)) (SpanRange (Bound 3 Inclusive) (Bound 7 Inclusive) :: Range Integer)
+-- True
+-- >>> rangesOverlap (SpanRange (Bound 1 Inclusive) (Bound 5 Exclusive)) (SpanRange (Bound 5 Inclusive) (Bound 7 Inclusive) :: Range Integer)
+-- False
+rangesOverlap :: Ord a => Range a -> Range a -> Bool
+rangesOverlap a b = Overlap == rangesOverlapType a b
+
+-- | Returns 'True' if two ranges touch at a single exclusive boundary but
+-- share no values.
+--
+-- >>> rangesAdjoin (SpanRange (Bound 1 Inclusive) (Bound 5 Exclusive)) (SpanRange (Bound 5 Inclusive) (Bound 7 Inclusive) :: Range Integer)
+-- True
+-- >>> rangesAdjoin (SpanRange (Bound 1 Inclusive) (Bound 5 Inclusive)) (SpanRange (Bound 3 Inclusive) (Bound 7 Inclusive) :: Range Integer)
+-- False
+rangesAdjoin :: Ord a => Range a -> Range a -> Bool
+rangesAdjoin a b = Adjoin == rangesOverlapType a b
+
+rangesOverlapType :: Ord a => Range a -> Range a -> OverlapType
+rangesOverlapType (SingletonRange a) x =
+  rangesOverlapType (SpanRange (Bound a Inclusive) (Bound a Inclusive)) x
+rangesOverlapType (SpanRange x y)        (SpanRange a b)         = boundsOverlapType (x, y) (a, b)
+rangesOverlapType (SpanRange _ y)        (LowerBoundRange lower) = againstLowerBound y lower
+rangesOverlapType (SpanRange x _)        (UpperBoundRange upper) = againstUpperBound x upper
+rangesOverlapType (LowerBoundRange _)    (LowerBoundRange _)     = Overlap
+rangesOverlapType (LowerBoundRange lo)   (UpperBoundRange up)    = againstUpperBound lo up
+rangesOverlapType (UpperBoundRange _)    (UpperBoundRange _)     = Overlap
+rangesOverlapType InfiniteRange          _                       = Overlap
+rangesOverlapType a b = rangesOverlapType b a
+
+-- ---------------------------------------------------------------------------
+-- Multi-range predicates
+-- ---------------------------------------------------------------------------
 
 -- | Returns 'True' if the value falls within any of the given ranges.
 --
--- When a 'Ranges' value is constructed via the operators or set-operation
--- functions in this module, a lookup structure is pre-built at construction
--- time, making each membership test O(log n) in the number of spans.
---
--- __Important — 'fmap' clears the cache.__  'Functor' cannot carry the 'Ord'
--- constraint needed to rebuild the lookup structure, so 'fmap'ping a 'Ranges'
--- value discards it.  If you intend to test membership against a mapped
--- 'Ranges' many times, rebuild the cache first by passing the result through
--- any set-operation function (e.g. @union mempty@) or by wrapping the raw
--- list with 'joinRanges':
---
--- @
--- -- cache lost — rebuilt on every call to inRanges
--- let shifted = fmap (+1) myRanges
---
--- -- cache rebuilt once — O(log n) per query
--- let shifted = union mempty (fmap (+1) myRanges)
--- filter (inRanges shifted) largeList
--- @
---
--- Partial application is idiomatic and ensures the lookup structure (whether
--- pre-built or lazily constructed) is shared across all queries:
+-- The membership predicate is pre-built when the 'Ranges' value is
+-- constructed, so each call is O(log n) in the number of spans. Partial
+-- application is idiomatic:
 --
 -- @
 -- let memberOf = inRanges myRanges
@@ -196,69 +330,103 @@ inf = mkRanges [R.inf]
 -- >>> inRanges (1 +=+ 10 <> 20 +=+ 30 :: Ranges Integer) 15
 -- False
 inRanges :: Ord a => Ranges a -> a -> Bool
-inRanges r = case _rangesQuery r of
-  Just f  -> f
-  Nothing -> R.inRanges (unRanges r)
+inRanges = _rangesQuery
 
--- | Returns 'True' if the value is strictly above (greater than the upper
--- bound of) all of the given ranges.
+-- | Returns 'True' if the value is strictly above all of the given ranges.
 --
 -- >>> aboveRanges (1 +=+ 5 <> 10 +=+ 15 :: Ranges Integer) 20
 -- True
 -- >>> aboveRanges (1 +=+ 5 <> lbi 10 :: Ranges Integer) 20
 -- False
-aboveRanges :: (Ord a) => Ranges a -> a -> Bool
-aboveRanges r a = R.aboveRanges (unRanges r) a
+aboveRanges :: Ord a => Ranges a -> a -> Bool
+aboveRanges r a = all (`aboveRange` a) (unRanges r)
 
--- | Returns 'True' if the value is strictly below (less than the lower
--- bound of) all of the given ranges.
+-- | Returns 'True' if the value is strictly below all of the given ranges.
 --
 -- >>> belowRanges (5 +=+ 10 <> 20 +=+ 30 :: Ranges Integer) 1
 -- True
 -- >>> belowRanges (ubi 10 <> 20 +=+ 30 :: Ranges Integer) 1
 -- False
-belowRanges :: (Ord a) => Ranges a -> a -> Bool
-belowRanges r a = R.belowRanges (unRanges r) a
+belowRanges :: Ord a => Ranges a -> a -> Bool
+belowRanges r a = all (`belowRange` a) (unRanges r)
 
--- | Set union of two 'Ranges'. The output is in merged canonical form.
--- Equivalent to @('<>')@.
-union :: (Ord a) => Ranges a -> Ranges a -> Ranges a
-union a b = mkRanges $ R.union (unRanges a) (unRanges b)
+-- ---------------------------------------------------------------------------
+-- Set operations
+-- ---------------------------------------------------------------------------
 
--- | Set intersection of two 'Ranges'. Returns only values present in both.
+-- | Canonicalise a raw list of 'Range' values into a 'Ranges'. Overlapping
+-- ranges are merged; the result is sorted and non-overlapping.
+--
+-- >>> mergeRanges [LowerBoundRange (Bound 12 Inclusive), SpanRange (Bound 1 Inclusive) (Bound 10 Inclusive), SpanRange (Bound 5 Inclusive) (Bound 15 Inclusive) :: Range Integer]
+-- Ranges [lbi 1]
+mergeRanges :: Ord a => [Range a] -> Ranges a
+mergeRanges = mkRanges
+
+-- | Set union. Equivalent to @('<>')@.
+--
+-- >>> union (1 +=+ 10) (5 +=+ 15 :: Ranges Integer)
+-- Ranges [1 +=+ 15]
+union :: Ord a => Ranges a -> Ranges a -> Ranges a
+union a b = mkRanges $ Alg.eval $
+  Alg.union (Alg.const (unRanges a)) (Alg.const (unRanges b))
+
+-- | Set intersection. Returns only values present in both.
 --
 -- >>> intersection (1 +=+ 10) (5 +=+ 15 :: Ranges Integer)
 -- Ranges [5 +=+ 10]
-intersection :: (Ord a) => Ranges a -> Ranges a -> Ranges a
-intersection a b = mkRanges $ R.intersection (unRanges a) (unRanges b)
+intersection :: Ord a => Ranges a -> Ranges a -> Ranges a
+intersection a b = mkRanges $ Alg.eval $
+  Alg.intersection (Alg.const (unRanges a)) (Alg.const (unRanges b))
 
--- | Set difference: values in the first 'Ranges' that are not in the second.
+-- | Set difference: values in the first 'Ranges' not in the second.
 --
 -- >>> difference (1 +=+ 10) (5 +=+ 15 :: Ranges Integer)
 -- Ranges [1 +=* 5]
-difference :: (Ord a) => Ranges a -> Ranges a -> Ranges a
-difference a b = mkRanges $ R.difference (unRanges a) (unRanges b)
+difference :: Ord a => Ranges a -> Ranges a -> Ranges a
+difference a b = mkRanges $ Alg.eval $
+  Alg.difference (Alg.const (unRanges a)) (Alg.const (unRanges b))
 
--- | Returns the complement of the given 'Ranges': all values /not/ covered.
--- Note that @'invert' . 'invert' == 'id'@.
-invert :: (Ord a) => Ranges a -> Ranges a
-invert = mkRanges . R.invert . unRanges
+-- | Complement: all values /not/ covered by the given 'Ranges'.
+-- @'invert' . 'invert' == 'id'@.
+--
+-- >>> invert (1 +=* 10 <> 15 *=+ 20 :: Ranges Integer)
+-- Ranges [ube 1,10 +=+ 15,lbe 20]
+invert :: Ord a => Ranges a -> Ranges a
+invert = mkRanges . Alg.eval . Alg.invert . Alg.const . unRanges
 
--- | Instantiates all values covered by the ranges as a list.
--- __Warning:__ This is a convenience function and is not efficient. Prefer
--- membership checks with 'inRanges' where possible. Combine with 'take' to
--- avoid evaluating infinite ranges.
+-- ---------------------------------------------------------------------------
+-- Enumerable methods
+-- ---------------------------------------------------------------------------
+
+-- | Instantiate all values covered by the ranges as a list.
+-- __Warning:__ not efficient. Prefer 'inRanges' for membership tests.
+-- Combine with 'take' to avoid evaluating infinite ranges.
+--
+-- >>> take 5 . fromRanges $ (1 +=+ 10 :: Ranges Integer)
+-- [1,2,3,4,5]
 --
 -- >>> take 6 . fromRanges $ (1 +=+ 3 :: Ranges Integer) <> (10 +=+ 12)
 -- [1,10,2,11,3,12]
 fromRanges :: (Ord a, Enum a) => Ranges a -> [a]
-fromRanges = R.fromRanges . unRanges
+fromRanges = takeEvenly . fmap fromRange . unRanges
+  where
+    fromRange (SingletonRange x) = [x]
+    fromRange (SpanRange (Bound a aType) (Bound b bType)) =
+      [ (if aType == Inclusive then a else succ a)
+        .. (if bType == Inclusive then b else pred b) ]
+    fromRange (LowerBoundRange (Bound x xType)) =
+      iterate succ (if xType == Inclusive then x else succ x)
+    fromRange (UpperBoundRange (Bound x xType)) =
+      iterate pred (if xType == Inclusive then x else pred x)
+    fromRange InfiniteRange =
+      zero : takeEvenly [tail (iterate succ zero), tail (iterate pred zero)]
+      where zero = toEnum 0
 
--- | Joins adjacent ranges that are contiguous for 'Enum' types. For example,
--- @[1 +=+ 5, 6 +=+ 10]@ can be collapsed to @[1 +=+ 10]@ for 'Integer'
--- because there is no integer between 5 and 6.
+-- | Join adjacent ranges that are contiguous for 'Enum' types.
+-- For example, @[1 +=+ 5, 6 +=+ 10]@ collapses to @[1 +=+ 10]@ for
+-- 'Integer' because there is no integer between 5 and 6.
 --
 -- >>> joinRanges (mconcat [1 +=+ 5, 6 +=+ 10] :: Ranges Integer)
 -- Ranges [1 +=+ 10]
 joinRanges :: (Ord a, Enum a) => Ranges a -> Ranges a
-joinRanges = mkRanges . R.joinRanges . unRanges
+joinRanges = mkRanges . exportRangeMerge . joinRM . loadRanges . unRanges

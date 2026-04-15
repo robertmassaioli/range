@@ -64,7 +64,7 @@ tests_inRange = testGroup "inRange Function"
 -- (1, 3) intersection (3, 4) = (3, 3)
 -- ((1, 3) intersection (3, 4)) union (3, 4) => (3, 4)
 
-prop_in_range_out_of_range_after_invert :: (Integer, [Range Integer]) -> Bool
+prop_in_range_out_of_range_after_invert :: (Integer, Ranges Integer) -> Bool
 prop_in_range_out_of_range_after_invert (point, ranges) =
    (inRanges ranges point) /= (inRanges (invert ranges) point)
 
@@ -75,8 +75,8 @@ test_ranges_invert = testGroup "invert function for ranges"
 prop_equivalence_eval_and_evalPredicate :: ([Integer], Alg.RangeExpr [Range Integer]) -> Bool
 prop_equivalence_eval_and_evalPredicate (points, expr) = actual == expected
   where
-      actual = map (inRanges $ Alg.eval expr) points
-      expected = map (Alg.eval $ fmap inRanges expr) points
+      actual   = map (inRanges (mergeRanges (Alg.eval expr))) points
+      expected = map (Alg.eval (fmap (inRanges . mergeRanges) expr)) points
 
 test_algebra_equivalence = testGroup "algebra equivalence"
    [ testProperty "eval and evalPredicate" prop_equivalence_eval_and_evalPredicate

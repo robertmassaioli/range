@@ -13,27 +13,23 @@ import Test.Generators ()
 -- Helpers
 -- ---------------------------------------------------------------------------
 
--- Sort before comparing so that order differences don't cause false failures.
--- mergeRanges produces a canonical form, so we use it to normalise both sides.
-canonical :: Ord a => [Range a] -> [Range a]
-canonical = mergeRanges
-
-eq :: (Ord a) => [Range a] -> [Range a] -> Bool
-eq a b = canonical a == canonical b
+-- Ranges is always in canonical form; compare the underlying lists.
+eq :: Ord a => Ranges a -> Ranges a -> Bool
+eq a b = unRanges a == unRanges b
 
 -- ---------------------------------------------------------------------------
 -- Idempotency
 -- ---------------------------------------------------------------------------
 
-prop_mergeRanges_idempotent :: [Range Integer] -> Bool
+prop_mergeRanges_idempotent :: Ranges Integer -> Bool
 prop_mergeRanges_idempotent xs =
-   mergeRanges (mergeRanges xs) == mergeRanges xs
+   mergeRanges (unRanges xs) `eq` xs
 
-prop_union_idempotent :: [Range Integer] -> Bool
+prop_union_idempotent :: Ranges Integer -> Bool
 prop_union_idempotent xs =
    union xs xs `eq` xs
 
-prop_intersection_idempotent :: [Range Integer] -> Bool
+prop_intersection_idempotent :: Ranges Integer -> Bool
 prop_intersection_idempotent xs =
    intersection xs xs `eq` xs
 
@@ -48,11 +44,11 @@ test_idempotency = testGroup "idempotency"
 -- Commutativity
 -- ---------------------------------------------------------------------------
 
-prop_union_commutative :: ([Range Integer], [Range Integer]) -> Bool
+prop_union_commutative :: (Ranges Integer, Ranges Integer) -> Bool
 prop_union_commutative (a, b) =
    union a b `eq` union b a
 
-prop_intersection_commutative :: ([Range Integer], [Range Integer]) -> Bool
+prop_intersection_commutative :: (Ranges Integer, Ranges Integer) -> Bool
 prop_intersection_commutative (a, b) =
    intersection a b `eq` intersection b a
 
@@ -66,11 +62,11 @@ test_commutativity = testGroup "commutativity"
 -- Associativity
 -- ---------------------------------------------------------------------------
 
-prop_union_associative :: ([Range Integer], [Range Integer], [Range Integer]) -> Bool
+prop_union_associative :: (Ranges Integer, Ranges Integer, Ranges Integer) -> Bool
 prop_union_associative (a, b, c) =
    union (union a b) c `eq` union a (union b c)
 
-prop_intersection_associative :: ([Range Integer], [Range Integer], [Range Integer]) -> Bool
+prop_intersection_associative :: (Ranges Integer, Ranges Integer, Ranges Integer) -> Bool
 prop_intersection_associative (a, b, c) =
    intersection (intersection a b) c `eq` intersection a (intersection b c)
 
@@ -85,12 +81,12 @@ test_associativity = testGroup "associativity"
 -- ---------------------------------------------------------------------------
 
 prop_intersection_distributes_over_union
-   :: ([Range Integer], [Range Integer], [Range Integer]) -> Bool
+   :: (Ranges Integer, Ranges Integer, Ranges Integer) -> Bool
 prop_intersection_distributes_over_union (a, b, c) =
    intersection a (union b c) `eq` union (intersection a b) (intersection a c)
 
 prop_union_distributes_over_intersection
-   :: ([Range Integer], [Range Integer], [Range Integer]) -> Bool
+   :: (Ranges Integer, Ranges Integer, Ranges Integer) -> Bool
 prop_union_distributes_over_intersection (a, b, c) =
    union a (intersection b c) `eq` intersection (union a b) (union a c)
 
@@ -106,32 +102,28 @@ test_distributivity = testGroup "distributivity"
 -- Identity laws
 -- ---------------------------------------------------------------------------
 
--- The empty range list acts as the identity for union
-prop_union_identity_empty :: [Range Integer] -> Bool
+prop_union_identity_empty :: Ranges Integer -> Bool
 prop_union_identity_empty xs =
-   union xs [] `eq` xs
+   union xs mempty `eq` xs
 
--- InfiniteRange acts as the identity for intersection
-prop_intersection_identity_infinite :: [Range Integer] -> Bool
+prop_intersection_identity_infinite :: Ranges Integer -> Bool
 prop_intersection_identity_infinite xs =
-   intersection xs [InfiniteRange] `eq` xs
+   intersection xs inf `eq` xs
 
--- Union with InfiniteRange absorbs everything
-prop_union_absorb_infinite :: [Range Integer] -> Bool
+prop_union_absorb_infinite :: Ranges Integer -> Bool
 prop_union_absorb_infinite xs =
-   union xs [InfiniteRange] `eq` [InfiniteRange]
+   union xs inf `eq` inf
 
--- Intersection with empty absorbs everything
-prop_intersection_absorb_empty :: [Range Integer] -> Bool
+prop_intersection_absorb_empty :: Ranges Integer -> Bool
 prop_intersection_absorb_empty xs =
-   intersection xs [] `eq` []
+   intersection xs mempty `eq` mempty
 
 test_identity_absorption :: Test
 test_identity_absorption = testGroup "identity and absorption"
-   [ testProperty "union with [] is identity"                prop_union_identity_empty
-   , testProperty "intersection with InfiniteRange is identity" prop_intersection_identity_infinite
-   , testProperty "union with InfiniteRange absorbs"         prop_union_absorb_infinite
-   , testProperty "intersection with [] absorbs"             prop_intersection_absorb_empty
+   [ testProperty "union with mempty is identity"                prop_union_identity_empty
+   , testProperty "intersection with inf is identity"            prop_intersection_identity_infinite
+   , testProperty "union with inf absorbs"                       prop_union_absorb_infinite
+   , testProperty "intersection with mempty absorbs"             prop_intersection_absorb_empty
    ]
 
 -- ---------------------------------------------------------------------------
@@ -139,7 +131,7 @@ test_identity_absorption = testGroup "identity and absorption"
 -- ---------------------------------------------------------------------------
 
 prop_difference_eq_intersection_invert
-   :: ([Range Integer], [Range Integer]) -> Bool
+   :: (Ranges Integer, Ranges Integer) -> Bool
 prop_difference_eq_intersection_invert (a, b) =
    difference a b `eq` intersection a (invert b)
 
@@ -153,7 +145,7 @@ test_difference = testGroup "difference"
 -- Double inversion
 -- ---------------------------------------------------------------------------
 
-prop_invert_twice_identity :: [Range Integer] -> Bool
+prop_invert_twice_identity :: Ranges Integer -> Bool
 prop_invert_twice_identity xs =
    invert (invert xs) `eq` xs
 
