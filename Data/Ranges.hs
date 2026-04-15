@@ -96,6 +96,8 @@ module Data.Ranges (
 -- >>> import Data.Ranges
 -- >>> import Data.Foldable (fold)
 
+import Control.DeepSeq (NFData, rnf)
+
 import Data.Range.Data
 import Data.Range.Util
   ( againstLowerBound, againstUpperBound, boundIsBetween, boundsOverlapType
@@ -167,6 +169,11 @@ data Ranges a = Ranges
 
 instance Show a => Show (Ranges a) where
   showsPrec i r = (("Ranges " ++) . showsPrec i (unRanges r))
+
+-- | Forces the canonical range list; the cached predicate closure is not
+-- forced (it is derived from the list and adds no new thunks).
+instance NFData a => NFData (Ranges a) where
+  rnf r = rnf (unRanges r)
 
 instance Ord a => Semigroup (Ranges a) where
   (<>) a b = mkRanges (unRanges a ++ unRanges b)
