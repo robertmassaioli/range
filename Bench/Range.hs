@@ -49,14 +49,15 @@ elemList :: Int -> [Integer]
 elemList n = concatMap (\i -> [fromIntegral (i * 3) .. fromIntegral (i * 3 + 1)]) [0 .. n - 1]
 
 -- | Build a left-skewed union tree of N singleton ranges via the Algebra
-unionTree :: Int -> Alg.RangeExpr [Range Integer]
-unionTree n = foldl1 Alg.union [Alg.const [SingletonRange (fromIntegral i)] | i <- [1 .. n :: Int]]
+unionTree :: Int -> Alg.RangeExpr (Ranges Integer)
+unionTree n = foldl1 Alg.union
+  [ Alg.const (mergeRanges [SingletonRange (fromIntegral i)]) | i <- [1 .. n :: Int] ]
 
 -- | Build a left-skewed intersection tree of N overlapping span ranges via the Algebra
-intersectionTree :: Int -> Alg.RangeExpr [Range Integer]
+intersectionTree :: Int -> Alg.RangeExpr (Ranges Integer)
 intersectionTree n = foldl1 Alg.intersection
-  [ Alg.const [ SpanRange (Bound (fromIntegral (i * 2)) Inclusive)
-                           (Bound (fromIntegral (i * 2 + 100)) Inclusive) ]
+  [ Alg.const (mergeRanges [ SpanRange (Bound (fromIntegral (i * 2)) Inclusive)
+                                        (Bound (fromIntegral (i * 2 + 100)) Inclusive) ])
   | i <- [1 .. n :: Int]
   ]
 

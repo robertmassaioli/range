@@ -182,6 +182,16 @@ instance NFData a => NFData (Ranges a) where
 instance Ord a => Semigroup (Ranges a) where
   (<>) a b = mkRanges (unRanges a ++ unRanges b)
 
+-- | Evaluates a 'Alg.RangeExpr' tree whose leaves are 'Ranges' values,
+-- producing a canonicalised 'Ranges' with a pre-built membership predicate.
+--
+-- This is the primary evaluation target for user-facing algebra expressions.
+-- The implementation converts leaves to @['Range' a]@ internally, folds the
+-- tree in a single @'RangeMerge'@ pass (the same efficient path as the
+-- @['Range' a]@ instance), then wraps the result with 'mkRanges'.
+instance (Ord a) => Alg.RangeAlgebra (Ranges a) where
+  eval expr = mkRanges (Alg.eval (fmap unRanges expr))
+
 instance Ord a => Monoid (Ranges a) where
   mempty  = mkRanges []
   mconcat = mkRanges . concatMap unRanges

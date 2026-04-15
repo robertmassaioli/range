@@ -9,8 +9,9 @@
 --
 -- __When to use this module:__ Build a 'RangeExpr' when you are combining three
 -- or more operations in a pipeline, or when you want to evaluate the same
--- expression against multiple targets (e.g. both @['Range' a]@ and @a -> 'Bool'@).
--- A single @union a b@ is no faster through the algebra than a direct call.
+-- expression against multiple targets (e.g. both 'Data.Ranges.Ranges' and
+-- @a -> 'Bool'@). A single @union a b@ is no faster through the algebra than
+-- a direct call.
 --
 -- __Note:__ This module is based on F-Algebras. If you have never encountered
 -- them before, see
@@ -19,21 +20,28 @@
 --
 -- == Examples
 --
--- Evaluate to a concrete list of ranges:
+-- Evaluate to a 'Data.Ranges.Ranges' value (the typical use):
 --
 -- @
 -- import qualified Data.Range.Algebra as A
--- import Data.Range
--- A.eval . A.invert $ A.const [SingletonRange (5 :: Integer)]
--- -- [ube 4,lbi 6]
+-- import Data.Ranges
+--
+-- expr :: A.RangeExpr (Ranges Integer)
+-- expr = A.invert (A.const (SingletonRange 5))
+--
+-- A.eval expr :: Ranges Integer
+-- -- Ranges [ube 4,lbi 6]
 -- @
 --
--- Evaluate the same expression as a predicate (no intermediate list is built):
+-- Evaluate the same expression as a predicate (no intermediate structure built):
 --
 -- @
--- let expr = A.union (A.const [1 +=+ 10]) (A.const [20 +=+ 30]) :: A.RangeExpr [Range Integer]
--- (A.eval expr :: Integer -> Bool) 25  -- True
--- (A.eval expr :: Integer -> Bool) 15  -- False
+-- import qualified Data.Range.Algebra as A
+-- import Data.Ranges
+--
+-- let expr = A.union (A.const (1 +=+ 10)) (A.const (20 +=+ 30)) :: A.RangeExpr (Ranges Integer)
+-- A.eval (fmap inRanges expr) 25  -- True
+-- A.eval (fmap inRanges expr) 15  -- False
 -- @
 --
 module Data.Range.Algebra
@@ -83,23 +91,29 @@ difference :: RangeExpr a -> RangeExpr a -> RangeExpr a
 difference a b = RangeExpr . Free $ Difference (getFree a) (getFree b)
 
 -- | A type class for types that a 'RangeExpr' can be evaluated to.
--- Two instances are provided out of the box; additional targets can be added
+-- Three instances are provided out of the box; additional targets can be added
 -- by implementing this class.
 class RangeAlgebra a where
   -- | Collapses a 'RangeExpr' tree into its target representation by
-  -- evaluating every node bottom-up. Two evaluation targets are supported:
+  -- evaluating every node bottom-up. Three evaluation targets are supported:
   --
-  -- * @['Data.Range.Range' a]@ — a merged, canonical list of non-overlapping ranges.
-  -- * @a -> 'Bool'@ — a membership predicate; no intermediate list is constructed.
+  -- * 'Data.Ranges.Ranges' @a@ — canonical, indexed set with pre-built
+  --   membership predicate. The primary target for user code; instance defined
+  --   in "Data.Ranges".
+  -- * @['Data.Range.Data.Range' a]@ — a merged, canonical list. Used internally
+  --   and useful when you need to inspect individual ranges.
+  -- * @a -> 'Bool'@ — a membership predicate; no intermediate structure built.
   eval :: Algebra RangeExpr a
 
 -- | Evaluates to a merged, canonical list of non-overlapping ranges.
--- Input ranges are allowed to overlap; the output is guaranteed to be disjoint.
+-- Used internally by "Data.Ranges" and useful when you need to inspect
+-- individual 'Range' values. Prefer the 'Data.Ranges.Ranges' instance for
+-- general use.
 instance (Ord a) => RangeAlgebra [Range a] where
   eval = iter rangeAlgebra . getFree
 
 -- | Evaluates to a membership predicate @a -> 'Bool'@.
--- More efficient than the @['Range' a]@ instance when you only need to test
--- membership and do not need to inspect the ranges themselves.
+-- No intermediate structure is constructed. With 'Data.Ranges.Ranges' leaves,
+-- use @'eval' ('fmap' 'Data.Ranges.inRanges' expr)@ to reach this instance.
 instance RangeAlgebra (a -> Bool) where
   eval = iter predicateAlgebra . getFree
