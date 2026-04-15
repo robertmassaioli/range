@@ -1,14 +1,40 @@
 {-# LANGUAGE Safe #-}
 
-module Data.Range.Util where
+-- | Internal utility functions shared across the range library.
+-- This module is in @other-modules@ and is not part of the public API.
+--
+-- Functions are grouped by the layer that consumes them:
+--   * "Used by Ranges\/Ord" — consumed by the semi-public modules
+--   * "Used by Spans\/RangeInternal" — consumed only by the strictly-internal layer
+--   * "Util-internal" — building blocks used only within this module
+module Data.Range.Util
+  ( -- * Used by Ranges and Ord
+    compareLower
+  , compareHigher
+  , invertBound
+  , boundsOverlapType
+  , pointJoinType
+  , boundIsBetween
+  , againstLowerBound
+  , againstUpperBound
+  , takeEvenly
+    -- * Used by Spans and RangeInternal
+  , compareUpperToLower
+  , minBounds
+  , maxBounds
+  , minBoundsIntersection
+  , maxBoundsIntersection
+  , insertionSort
+  , isEmptySpan
+  , removeEmptySpans
+  , boundCmp
+  , lowestValueInLowerBound
+  , highestValueInUpperBound
+  ) where
 
 import Data.List (transpose)
 
 import Data.Range.Data
-
--- This module is supposed to contain all of the functions that are required by the rest
--- of the code but could be easily pulled into separate and completely non-related
--- codebases or libraries.
 
 compareLower :: Ord a => Bound a -> Bound a -> Ordering
 compareLower ab@(Bound a aType) bb@(Bound b _)
@@ -24,6 +50,7 @@ compareHigher ab@(Bound a aType) bb@(Bound b _)
    | a < b        = LT
    | otherwise    = GT
 
+-- | Util-internal: used only by 'minBoundsIntersection'.
 compareLowerIntersection :: Ord a => Bound a -> Bound a -> Ordering
 compareLowerIntersection ab@(Bound a aType) bb@(Bound b _)
    | ab == bb     = EQ
@@ -31,6 +58,7 @@ compareLowerIntersection ab@(Bound a aType) bb@(Bound b _)
    | a < b        = LT
    | otherwise    = GT
 
+-- | Util-internal: used only by 'maxBoundsIntersection'.
 compareHigherIntersection :: Ord a => Bound a -> Bound a -> Ordering
 compareHigherIntersection ab@(Bound a aType) bb@(Bound b _)
    | ab == bb     = EQ
@@ -83,6 +111,7 @@ boundsOverlapType l@(ab@(Bound a _), bb@(Bound b _)) r@(xb@(Bound x _), yb@(Boun
    | b == y                            = Overlap
    | otherwise = (ab `boundIsBetween` (xb, yb)) `orOverlapType` (xb `boundIsBetween` (ab, bb))
 
+-- | Util-internal: used only by 'boundsOverlapType'.
 orOverlapType :: OverlapType -> OverlapType -> OverlapType
 orOverlapType Overlap _ = Overlap
 orOverlapType _ Overlap = Overlap
@@ -95,15 +124,22 @@ pointJoinType Inclusive Inclusive = Overlap
 pointJoinType Exclusive Exclusive = Separate
 pointJoinType _ _ = Adjoin
 
--- This function assumes that the bound on the left is a lower bound and that the range is in (lower, upper)
--- bound order
+-- | This function assumes that the bound on the left is a lower bound and
+-- that the range is in @(lower, upper)@ bound order.
 boundCmp :: (Ord a) => Bound a -> (Bound a, Bound a) -> Ordering
 boundCmp ab@(Bound a _) (xb@(Bound x _), yb)
    | boundIsBetween ab (xb, yb) /= Separate = EQ
    | a <= x = LT
    | otherwise = GT
 
--- TODO replace everywhere with boundsOverlapType
+-- | Tests whether a single 'Bound' falls within the span @(lower, upper)@,
+-- returning the 'OverlapType' at that point.
+--
+-- This is the point-in-span primitive. 'boundsOverlapType' is built on top
+-- of it and handles the span-vs-span case. Replacing call sites of this
+-- function with 'boundsOverlapType' would require constructing a degenerate
+-- span @(b, b)@ for each point — see @ai-planning/boundIsBetween-todo.md@
+-- for the full analysis.
 boundIsBetween :: (Ord a) => Bound a -> (Bound a, Bound a) -> OverlapType
 boundIsBetween (Bound a aType) (Bound x xType, Bound y yType)
    | x > a     = Separate
@@ -111,9 +147,6 @@ boundIsBetween (Bound a aType) (Bound x xType, Bound y yType)
    | a < y     = Overlap
    | a == y    = pointJoinType aType yType
    | otherwise = Separate
-
-singletonInSpan :: Ord a => a -> (Bound a, Bound a) -> OverlapType
-singletonInSpan a span' = boundIsBetween (Bound a Inclusive) span'
 
 againstLowerBound :: Ord a => Bound a -> Bound a -> OverlapType
 againstLowerBound (Bound a aType) (Bound lower lowerType)
@@ -129,10 +162,6 @@ againstUpperBound (Bound a aType) (Bound upper upperType)
 
 takeEvenly :: [[a]] -> [a]
 takeEvenly = concat . transpose
-
-pairs :: [a] -> [(a, a)]
-pairs [] = []
-pairs xs = zip xs (tail xs)
 
 lowestValueInLowerBound :: Enum a => Bound a -> a
 lowestValueInLowerBound (Bound a Inclusive) = a
