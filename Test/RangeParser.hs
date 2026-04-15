@@ -6,20 +6,21 @@ import Test.Framework (Test, testGroup)
 import Test.QuickCheck
 import Test.Framework.Providers.QuickCheck2
 
-import Data.Range
+import Data.Ranges
 import Data.Range.Parser
 
 -- ---------------------------------------------------------------------------
 -- Helpers
 -- ---------------------------------------------------------------------------
 
+-- | Check that parsing @input@ produces a 'Ranges' equal to @mergeRanges expected@.
 shouldParse :: String -> [Range Integer] -> Bool
 shouldParse input expected = case parseRanges input of
-   Right result -> result == expected
+   Right result -> result == mergeRanges expected
    Left _       -> False
 
 shouldFail :: String -> Bool
-shouldFail input = case (parseRanges input :: Either ParseError [Range Integer]) of
+shouldFail input = case (parseRanges input :: Either ParseError (Ranges Integer)) of
    Left _  -> True
    Right _ -> False
 
@@ -27,9 +28,6 @@ shouldFail input = case (parseRanges input :: Either ParseError [Range Integer])
 -- Haddock example tests
 -- ---------------------------------------------------------------------------
 
--- The example from the module documentation:
--- >>> parseRanges "-5,8-10,13-15,20-" :: Either ParseError [Range Integer]
--- Right [UpperBoundRange 5,SpanRange 8 10,SpanRange 13 15,LowerBoundRange 20]
 prop_haddock_example :: Bool
 prop_haddock_example = shouldParse "-5,8-10,13-15,20-"
    [ UpperBoundRange (Bound 5 Inclusive)
@@ -98,9 +96,9 @@ test_bounds = testGroup "bound ranges"
 prop_parse_wildcard :: Bool
 prop_parse_wildcard = shouldParse "*" [InfiniteRange]
 
+-- InfiniteRange absorbs everything; the canonical result is just inf.
 prop_parse_wildcard_in_union :: Bool
-prop_parse_wildcard_in_union = shouldParse "*,5"
-   [InfiniteRange, SingletonRange 5]
+prop_parse_wildcard_in_union = shouldParse "*,5" [InfiniteRange, SingletonRange 5]
 
 test_wildcard :: Test
 test_wildcard = testGroup "wildcard / infinite range"
@@ -134,18 +132,18 @@ test_union = testGroup "union (comma-separated)"
 -- ---------------------------------------------------------------------------
 
 prop_empty_string_parses :: Bool
-prop_empty_string_parses = case (parseRanges "" :: Either ParseError [Range Integer]) of
-   Right [] -> True
-   _        -> False
+prop_empty_string_parses = case (parseRanges "" :: Either ParseError (Ranges Integer)) of
+   Right result -> result == mempty
+   _            -> False
 
 -- The parser uses sepBy which returns [] on no matches,
--- so non-range input like "abc" or "-" parses as Right [].
+-- so non-range input like "abc" parses as Right mempty.
 -- This is a known limitation of the current parser design.
 prop_non_range_input_parses_empty :: Bool
 prop_non_range_input_parses_empty =
-   case (parseRanges "abc" :: Either ParseError [Range Integer]) of
-      Right [] -> True
-      _        -> False
+   case (parseRanges "abc" :: Either ParseError (Ranges Integer)) of
+      Right result -> result == mempty
+      _            -> False
 
 test_edge_cases :: Test
 test_edge_cases = testGroup "edge cases"
@@ -160,9 +158,8 @@ test_edge_cases = testGroup "edge cases"
 prop_custom_separators :: Bool
 prop_custom_separators =
    let args = defaultArgs { unionSeparator = ";", rangeSeparator = ".." }
-       result = customParseRanges args "1..5;10" :: Either ParseError [Range Integer]
-   in case result of
-      Right ranges -> ranges ==
+   in case customParseRanges args "1..5;10" :: Either ParseError (Ranges Integer) of
+      Right result -> result == mergeRanges
          [ SpanRange (Bound 1 Inclusive) (Bound 5 Inclusive)
          , SingletonRange 10
          ]

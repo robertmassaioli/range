@@ -167,8 +167,12 @@ data Ranges a = Ranges
   , _rangesQuery :: a -> Bool  -- ^ Cached O(log n) membership predicate.
   }
 
+-- | Two 'Ranges' values are equal when their canonical range lists are equal.
+instance Eq a => Eq (Ranges a) where
+  a == b = unRanges a == unRanges b
+
 instance Show a => Show (Ranges a) where
-  showsPrec i r = (("Ranges " ++) . showsPrec i (unRanges r))
+  showsPrec i r = showParen (i > 10) $ ("Ranges " ++) . shows (unRanges r)
 
 -- | Forces the canonical range list; the cached predicate closure is not
 -- forced (it is derived from the list and adds no new thunks).

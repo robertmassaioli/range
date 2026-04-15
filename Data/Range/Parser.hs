@@ -4,19 +4,19 @@
 --
 -- By default, ranges are separated by commas and span endpoints by a hyphen:
 --
--- >>> parseRanges "-5,8-10,13-15,20-" :: Either ParseError [Range Integer]
--- Right [ubi 5,8 +=+ 10,13 +=+ 15,lbi 20]
+-- >>> parseRanges "-5,8-10,13-15,20-" :: Either ParseError (Ranges Integer)
+-- Right (Ranges [ubi 5,8 +=+ 10,13 +=+ 15,lbi 20])
 --
 -- The @*@ wildcard produces an infinite range:
 --
--- >>> parseRanges "*" :: Either ParseError [Range Integer]
--- Right [inf]
+-- >>> parseRanges "*" :: Either ParseError (Ranges Integer)
+-- Right (Ranges [inf])
 --
 -- Use 'customParseRanges' to change the separator characters:
 --
 -- >>> let args = defaultArgs { unionSeparator = ";", rangeSeparator = ".." }
--- >>> customParseRanges args "1..5;10" :: Either ParseError [Range Integer]
--- Right [1 +=+ 5,SingletonRange 10]
+-- >>> customParseRanges args "1..5;10" :: Either ParseError (Ranges Integer)
+-- Right (Ranges [1 +=+ 5,SingletonRange 10])
 --
 -- __Known limitations:__
 --
@@ -25,13 +25,14 @@
 --   For negative values, use 'customParseRanges' with a different 'rangeSeparator',
 --   or pre-process the input string.
 --
--- * Unrecognised input is silently consumed as an empty list rather than producing
---   a parse error. For example, @parseRanges \"abc\"@ returns @Right []@. This is a
+-- * Unrecognised input is silently consumed as an empty set rather than producing
+--   a parse error. For example, @parseRanges \"abc\"@ returns @Right mempty@. This is a
 --   consequence of using 'Text.Parsec.sepBy' internally and is by design for
 --   CLI use where partial input is common.
 --
 -- For more complex parsing (e.g. @.cabal@ or @package.json@ files), parse version
--- strings with Parsec or Alex\/Happy and convert the results into 'Range' values directly.
+-- strings with Parsec or Alex\/Happy and convert the results into 'Range' values directly,
+-- then call 'mergeRanges'.
 module Data.Range.Parser
    ( -- * Parsing
      parseRanges
@@ -48,13 +49,13 @@ module Data.Range.Parser
    ) where
 
 -- $setup
--- >>> import Data.Range
+-- >>> import Data.Ranges
 -- >>> import Data.Range.Parser
 
 import Text.Parsec
 import Text.Parsec.String
 
-import Data.Range
+import Data.Ranges
 
 -- | Configuration for the range parser. All three fields are plain strings, so
 -- multi-character separators (e.g. @\"..\"@) are supported.
@@ -78,7 +79,8 @@ defaultArgs = Args
    }
 
 -- | Parses a range string using the default separators (@,@ and @-@). Returns
--- either a 'ParseError' or the list of parsed ranges.
+-- either a 'ParseError' or a canonicalised 'Ranges' value ready for membership
+-- testing and set operations.
 --
 -- The 'Read' instance of @a@ is used to parse individual numeric literals, so
 -- the type must have a well-behaved 'Read'. Exotic types with unusual 'Read'
@@ -86,17 +88,17 @@ defaultArgs = Args
 --
 -- See the module documentation for known limitations around negative numbers
 -- and unrecognised input.
-parseRanges :: (Read a) => String -> Either ParseError [Range a]
-parseRanges = parse (ranges defaultArgs) "(range parser)"
+parseRanges :: (Read a, Ord a) => String -> Either ParseError (Ranges a)
+parseRanges = fmap mergeRanges . parse (ranges defaultArgs) "(range parser)"
 
 -- | Like 'parseRanges' but with caller-supplied separator configuration.
 -- Use this when the default @,@ and @-@ characters conflict with your input format.
 --
 -- >>> let args = defaultArgs { unionSeparator = ";", rangeSeparator = ".." }
--- >>> customParseRanges args "1..5;10" :: Either ParseError [Range Integer]
--- Right [1 +=+ 5,SingletonRange 10]
-customParseRanges :: Read a => RangeParserArgs -> String -> Either ParseError [Range a]
-customParseRanges args = parse (ranges args) "(range parser)"
+-- >>> customParseRanges args "1..5;10" :: Either ParseError (Ranges Integer)
+-- Right (Ranges [1 +=+ 5,SingletonRange 10])
+customParseRanges :: (Read a, Ord a) => RangeParserArgs -> String -> Either ParseError (Ranges a)
+customParseRanges args = fmap mergeRanges . parse (ranges args) "(range parser)"
 
 string_ :: Stream s m Char => String -> ParsecT s u m ()
 string_ x = string x >> return ()
@@ -104,6 +106,9 @@ string_ x = string x >> return ()
 -- | Returns a Parsec 'Parser' for a list of ranges using the given configuration.
 -- Use this when embedding range parsing into a larger Parsec grammar; for
 -- standalone parsing prefer 'parseRanges' or 'customParseRanges'.
+--
+-- The returned list is unmerged — call 'mergeRanges' on the result to produce
+-- a canonical 'Ranges' value.
 ranges :: (Read a) => RangeParserArgs -> Parser [Range a]
 ranges args = range `sepBy` (string $ unionSeparator args)
    where
