@@ -163,9 +163,28 @@ inf = mkRanges [R.inf]
 
 -- | Returns 'True' if the value falls within any of the given ranges.
 --
--- The lookup structure is pre-built when the 'Ranges' value is constructed,
--- so each membership test is O(log n) where n is the number of spans.
--- Partial application is idiomatic:
+-- When a 'Ranges' value is constructed via the operators or set-operation
+-- functions in this module, a lookup structure is pre-built at construction
+-- time, making each membership test O(log n) in the number of spans.
+--
+-- __Important — 'fmap' clears the cache.__  'Functor' cannot carry the 'Ord'
+-- constraint needed to rebuild the lookup structure, so 'fmap'ping a 'Ranges'
+-- value discards it.  If you intend to test membership against a mapped
+-- 'Ranges' many times, rebuild the cache first by passing the result through
+-- any set-operation function (e.g. @union mempty@) or by wrapping the raw
+-- list with 'joinRanges':
+--
+-- @
+-- -- cache lost — rebuilt on every call to inRanges
+-- let shifted = fmap (+1) myRanges
+--
+-- -- cache rebuilt once — O(log n) per query
+-- let shifted = union mempty (fmap (+1) myRanges)
+-- filter (inRanges shifted) largeList
+-- @
+--
+-- Partial application is idiomatic and ensures the lookup structure (whether
+-- pre-built or lazily constructed) is shared across all queries:
 --
 -- @
 -- let memberOf = inRanges myRanges
