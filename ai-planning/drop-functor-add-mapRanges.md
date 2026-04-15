@@ -1,4 +1,4 @@
-# Proposal: Drop `Functor Ranges`, Add `mapRanges`
+# Proposal: Fix the `Functor Ranges` Problem
 
 ## Problem
 
@@ -55,15 +55,10 @@ constraint-free. Attempting to bridge that gap produces a leaky abstraction.
 
 ---
 
-## Proposed fix
+## Option A: Drop `Functor`, add `mapRanges` (keep the cache field)
 
-### Remove the `Functor` instance
-
-Delete the `instance Functor Ranges` declaration entirely.
-
-### Add `mapRanges`
-
-Export a single replacement function:
+Keep `Ranges` as a `data` type with the `_rangesQuery` cache field. Delete the
+`Functor` instance and replace it with a single explicit function:
 
 ```haskell
 -- | Map a function over every boundary value in every range, producing a
@@ -79,49 +74,153 @@ mapRanges :: (Ord a, Ord b) => (a -> b) -> Ranges a -> Ranges b
 mapRanges f = mkRanges . fmap (fmap f) . unRanges
 ```
 
-`mkRanges` calls `mergeRanges` (re-sorts and de-duplicates) and pre-builds
-the lookup structure, so the returned `Ranges b` is immediately O(log n) for
-`inRanges`.  The `Ord b` constraint makes the semantics explicit at the call
-site.
+`mkRanges` calls `mergeRanges` and pre-builds the lookup structure, so the
+returned `Ranges b` is immediately O(log n) for `inRanges`. The `Ord b`
+constraint makes the semantics explicit at the call site.
 
-### Migration
+**Tradeoffs:**
 
-Any code using `fmap f someRanges` becomes `mapRanges f someRanges`. Because
-`Functor` is a widely assumed typeclass, removing it is a **breaking change**
-and requires a major/minor PVP bump (i.e. `0.5.0.0`).
-
-The `fmap` use in the existing doctest:
-
-```haskell
--- >>> fmap (*2) (1 +=+ 5 :: Ranges Integer)
--- Ranges [2 +=+ 10]
-```
-
-becomes:
-
-```haskell
--- >>> mapRanges (*2) (1 +=+ 5 :: Ranges Integer)
--- Ranges [2 +=+ 10]
-```
+- `mapRanges` always returns a fully-cached `Ranges` — no silent O(n) penalty
+- `mapRanges` re-sorts and merges after mapping, so a non-monotonic mapping
+  produces a canonical (if semantically surprising) result rather than a broken one
+- The `Functor` identity law is satisfied vacuously
+- `inRanges` documentation no longer needs a workaround section
+- The `_rangesQuery` cache field still pays a constant per-value memory cost,
+  but it is always `Just` for every value the library produces
+- Breaking change — `0.5.0.0`
 
 ---
 
-## What users lose
+## Option B: Revert to `newtype`, rely on partial application
 
-Code that passes `Ranges` to a function expecting `Functor f => f a` (e.g.
-`Data.Functor.void`, or some generic utility) will break. In practice this is
-unlikely because `Ranges` carries `Ord` constraints on every meaningful
-operation, so it rarely fits into generic functor pipelines. Any code doing so
-was already living dangerously with the non-monotonic mapping hazard.
+Revert `Ranges` to a simple `newtype` over `[Range a]`, eliminating the cache
+field entirely:
 
-## What users gain
+```haskell
+newtype Ranges a = Ranges { unRanges :: [R.Range a] }
+```
 
-- `mapRanges` always returns a fully-cached `Ranges` — no silent O(n) penalty.
-- `mapRanges` re-sorts and merges, so non-monotonic mappings produce a
-  canonical (if semantically surprising) result rather than a broken one.
-- The `Functor` identity law is restored (vacuously, by not having the
-  instance at all).
-- The `inRanges` documentation no longer needs to explain a workaround.
+`Functor` works correctly again with no law violations because there is no
+hidden field to drop:
+
+```haskell
+instance Functor Ranges where
+   fmap f (Ranges rs) = Ranges (fmap (fmap f) rs)
+```
+
+Performance is preserved by relying on the partial-application behaviour of
+`Data.Range.inRanges`, which already pre-builds the lookup map at the point of
+partial application (introduced in the `0.4.0.0` cleanup):
+
+```haskell
+inRanges :: Ord a => Ranges a -> a -> Bool
+inRanges r = R.inRanges (unRanges r)
+-- R.inRanges builds the Map when partially applied:
+--   R.inRanges rs = case loadRanges rs of { IRM -> const True; RM lb ub spans -> buildSpanQuery lb ub spans }
+```
+
+The contract placed on the caller: **always partially apply `inRanges` when
+querying the same `Ranges` more than once.** This is already idiomatic Haskell
+and should be documented clearly:
+
+```haskell
+-- Good — map is built once, shared across all queries
+let memberOf = inRanges myRanges
+filter memberOf largeList
+
+-- Avoid — map is rebuilt for every element
+filter (inRanges myRanges) largeList  -- GHC may or may not share without -O2
+```
+
+**Tradeoffs:**
+
+- `Functor` laws hold without qualification
+- No per-value memory overhead for the cache field
+- The O(log n) guarantee depends on caller discipline; it is easy to accidentally
+  call `inRanges r val` in a loop without partial application and pay O(n log n)
+  instead of O(n + log n), with no type-level warning
+- Without `-O2`, GHC does not reliably common-subexpression-eliminate
+  `inRanges myRanges` across a `filter` call, so the discipline requirement
+  is load-bearing in unoptimised builds
+- Non-monotonic `fmap` still silently produces ill-formed spans — this problem
+  is unresolved
+- Breaking change (field removed from `data` type, `_rangesQuery` gone) — `0.5.0.0`
+
+---
+
+## Option C: Two-type split — `Ranges` (cached) and `RangeList` (plain)
+
+Introduce a second type that is a plain `newtype` over `[Range a]`, keeping the
+existing `data Ranges a` unchanged except for removing `Functor`:
+
+```haskell
+-- Existing type: cached, indexed, no Functor
+data Ranges a = Ranges { unRanges :: [R.Range a], _rangesQuery :: Maybe (a -> Bool) }
+
+-- New type: plain list wrapper, has Functor, no cache
+newtype RangeList a = RangeList { unRangeList :: [Range a] }
+  deriving (Functor)
+
+-- Convert a RangeList back into a cached Ranges
+toRanges :: Ord a => RangeList a -> Ranges a
+toRanges = mkRanges . unRangeList
+
+-- Downgrade a Ranges to a RangeList for transformation pipelines
+fromRanges :: Ranges a -> RangeList a
+fromRanges = RangeList . unRanges
+```
+
+The mapping workflow becomes explicit about when the cache is paid for:
+
+```haskell
+-- fmap over boundaries, then re-index once
+let shifted = toRanges . fmap (+1) . fromRanges $ myRanges
+filter (inRanges shifted) largeList
+```
+
+`RangeList` can also implement `Semigroup`/`Monoid` via list concatenation
+(without merging), giving callers a lazily-accumulated list they convert to
+`Ranges` in one pass when ready.
+
+**Tradeoffs:**
+
+- `Functor` laws hold on `RangeList` without qualification
+- `Ranges` retains its O(log n) membership guarantee unconditionally
+- The type system makes the cache boundary visible — `toRanges` is the explicit
+  "pay for indexing here" call
+- Adds a second public type, which increases API surface and may confuse new users
+  about which type to reach for
+- Non-monotonic `fmap` on `RangeList` still produces an ill-formed list, but
+  `toRanges` will re-sort and merge on conversion, silently correcting order
+- Additive change for the new type; removing `Functor Ranges` is still a
+  breaking change — `0.5.0.0`
+
+---
+
+## Recommendation
+
+**Option A** is the most honest and simplest fix: the `Functor` instance was
+always wrong for this type, and `mapRanges` makes the `Ord` requirement
+explicit at the one place it belongs. The `_rangesQuery` cache continues to
+earn its keep because `Ranges` values are typically constructed once and queried
+many times.
+
+**Option B** is a reasonable alternative if the goal is to minimise complexity.
+It removes the cache field entirely and pushes the performance contract onto
+callers, which is acceptable for a library whose primary audience writes
+idiomatic Haskell. The unresolved non-monotonic `fmap` hazard is its main
+weakness.
+
+**Option C** is worth considering if the library wants to support
+transformation pipelines (e.g. `fmap`, `traverse`, functor composition) as a
+first-class use case. The cost is a larger API surface.
+
+---
+
+## Shared migration note
+
+All three options are breaking changes that warrant a `0.5.0.0` version bump.
+The `fmap` doctest in `Data/Ranges.hs` must be updated in all cases.
 
 ---
 
