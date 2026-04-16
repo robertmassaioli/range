@@ -152,6 +152,45 @@ test_edge_cases = testGroup "edge cases"
    ]
 
 -- ---------------------------------------------------------------------------
+-- Invalid inputs (must fail)
+--
+-- The parser commits after consuming a union separator. If no valid range
+-- follows the separator, it produces a Left rather than silently succeeding.
+-- ---------------------------------------------------------------------------
+
+-- "1," — trailing comma: separator consumed, then end-of-input reached
+-- before the next range element.
+prop_trailing_comma_fails :: Bool
+prop_trailing_comma_fails = shouldFail "1,"
+
+-- "1,2,3," — trailing comma after multiple valid ranges.
+prop_trailing_comma_after_many_fails :: Bool
+prop_trailing_comma_after_many_fails = shouldFail "1,2,3,"
+
+-- "1,,2" — double comma: separator consumed, then another comma is found
+-- where a range element is expected.
+prop_double_comma_fails :: Bool
+prop_double_comma_fails = shouldFail "1,,2"
+
+-- "-" alone is the range separator with nothing on either side.
+-- spanRange wraps in try so it backtracks; singletonRange needs digits.
+-- The overall parser returns empty rather than failing (no input consumed).
+-- This test documents that behaviour — it is NOT a failure case.
+prop_bare_separator_parses_empty :: Bool
+prop_bare_separator_parses_empty =
+   case (parseRanges "-" :: Either ParseError (Ranges Integer)) of
+      Right result -> result == mempty
+      _            -> False
+
+test_invalid :: Test
+test_invalid = testGroup "invalid inputs"
+   [ testProperty "trailing comma produces parse error"            prop_trailing_comma_fails
+   , testProperty "trailing comma after many ranges fails"         prop_trailing_comma_after_many_fails
+   , testProperty "double comma produces parse error"              prop_double_comma_fails
+   , testProperty "bare separator parses as empty (not an error)"  prop_bare_separator_parses_empty
+   ]
+
+-- ---------------------------------------------------------------------------
 -- Custom parser args
 -- ---------------------------------------------------------------------------
 
@@ -183,5 +222,6 @@ rangeParserTestCases =
    , test_wildcard
    , test_union
    , test_edge_cases
+   , test_invalid
    , test_custom
    ]
