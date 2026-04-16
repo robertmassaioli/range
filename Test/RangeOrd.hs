@@ -2,15 +2,15 @@ module Test.RangeOrd
    ( rangeOrdTestCases
    ) where
 
-import Data.List (sort, sortOn)
+import Data.List (sortOn)
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 
 import Test.Framework (Test, testGroup)
 import Test.Framework.Providers.QuickCheck2 (testProperty)
-import Test.QuickCheck
+import Test.QuickCheck ()
 
-import Data.Range
+import Data.Ranges
 import Data.Range.Ord
 
 import Test.Generators ()

@@ -7,7 +7,7 @@ module Test.Generators where
 import Test.QuickCheck
 import Control.Monad (liftM)
 
-import Data.Range
+import Data.Ranges
 import qualified Data.Range.Algebra as Alg
 
 instance (Num a, Integral a, Ord a, Enum a) => Arbitrary (Range a) where

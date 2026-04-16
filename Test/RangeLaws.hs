@@ -3,10 +3,10 @@ module Test.RangeLaws
    ) where
 
 import Test.Framework (Test, testGroup)
-import Test.QuickCheck
+import Test.QuickCheck ()
 import Test.Framework.Providers.QuickCheck2
 
-import Data.Range
+import Data.Ranges
 import Test.Generators ()
 
 -- ---------------------------------------------------------------------------

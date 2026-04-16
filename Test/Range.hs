@@ -4,13 +4,13 @@
 
 module Main where
 
-import Test.Framework (defaultMain, testGroup)
+import Test.Framework (Test, defaultMain, testGroup)
 import Test.QuickCheck
 import Test.Framework.Providers.QuickCheck2
 
 import System.Random
 
-import Data.Range
+import Data.Ranges
 import qualified Data.Range.Algebra as Alg
 
 import Test.RangeMerge
@@ -50,9 +50,10 @@ prop_span_contains (SpanContains (begin, end) middle) = inRange (SpanRange (Boun
 prop_infinite_range_contains_everything :: Integer -> Bool
 prop_infinite_range_contains_everything = inRange InfiniteRange
 
+tests_inRange :: Test
 tests_inRange = testGroup "inRange Function"
    [ testProperty "equal singletons in range" prop_singleton_in_range
-   , testProperty "unequal singletons not in range" prop_singleton_not_in_range
+   , testProperty "unequal singletons not in range" (prop_singleton_not_in_range :: UnequalPair Integer -> Bool)
    , testProperty "spans contain values in their middles" prop_span_contains
    , testProperty "infinite ranges contain everything" prop_infinite_range_contains_everything
    ]
@@ -68,6 +69,7 @@ prop_in_range_out_of_range_after_invert :: (Integer, Ranges Integer) -> Bool
 prop_in_range_out_of_range_after_invert (point, ranges) =
    (inRanges ranges point) /= (inRanges (invert ranges) point)
 
+test_ranges_invert :: Test
 test_ranges_invert = testGroup "invert function for ranges"
    [ testProperty "element in range is now out of range after invert" prop_in_range_out_of_range_after_invert
    ]
@@ -78,11 +80,12 @@ prop_equivalence_eval_and_evalPredicate (points, expr) = actual == expected
       actual   = map (inRanges (mergeRanges (Alg.eval expr))) points
       expected = map (Alg.eval (fmap (inRanges . mergeRanges) expr)) points
 
+test_algebra_equivalence :: Test
 test_algebra_equivalence = testGroup "algebra equivalence"
    [ testProperty "eval and evalPredicate" prop_equivalence_eval_and_evalPredicate
    ]
 
---tests :: [Test]
+tests :: [Test]
 tests =
    [ tests_inRange
    , test_ranges_invert
@@ -93,4 +96,5 @@ tests =
    ++ rangeParserTestCases
    ++ rangeOrdTestCases
 
+main :: IO ()
 main = defaultMain tests

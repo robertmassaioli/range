@@ -96,6 +96,19 @@ Test-Suite test-range
                   , Test.RangeParser
                   , Test.RangeOrd
                   , Test.Generators
+                  -- library modules accessed directly by test internals:
+                  , Data.Ranges
+                  , Data.Range.Algebra
+                  , Data.Range.Algebra.Internal
+                  , Data.Range.Algebra.Predicate
+                  , Data.Range.Algebra.Range
+                  , Data.Range.Data
+                  , Data.Range.Operators
+                  , Data.Range.Ord
+                  , Data.Range.Parser
+                  , Data.Range.RangeInternal
+                  , Data.Range.Spans
+                  , Data.Range.Util
    build-depends: base                          >= 4.5 && < 5
                   , Cabal                       >= 1.14
                   , QuickCheck                  >= 2.4.0.1 && < 3
@@ -108,7 +121,7 @@ Test-Suite test-range
                   , containers >= 0.5 && < 1
                   , range
    default-language: Haskell2010
-   ghc-options: -rtsopts -Wall -fno-enable-rewrite-rules
+   ghc-options: -rtsopts -Wall
 
 test-suite doctest-range
   type:             exitcode-stdio-1.0
