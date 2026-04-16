@@ -34,12 +34,18 @@ emptyRangeMerge = RM Nothing Nothing []
 
 storeRange :: (Ord a) => Range a -> RangeMerge a
 storeRange InfiniteRange = IRM
-storeRange (LowerBoundRange lower) = emptyRangeMerge { largestLowerBound = Just lower }
-storeRange (UpperBoundRange upper) = emptyRangeMerge { largestUpperBound = Just upper }
+storeRange (LowerBoundRange lower) =
+   RM { largestLowerBound = Just lower, largestUpperBound = Nothing, spanRanges = [] }
+storeRange (UpperBoundRange upper) =
+   RM { largestLowerBound = Nothing, largestUpperBound = Just upper, spanRanges = [] }
 storeRange (SpanRange x@(Bound xValue xType) y@(Bound yValue yType))
    | xValue == yValue && pointJoinType xType yType == Separate = emptyRangeMerge
-   | otherwise = emptyRangeMerge { spanRanges = [(minBounds x y, maxBounds x y)] }
-storeRange (SingletonRange x) = emptyRangeMerge { spanRanges = [(Bound x Inclusive, Bound x Inclusive)] }
+   | otherwise =
+      RM { largestLowerBound = Nothing, largestUpperBound = Nothing
+         , spanRanges = [(minBounds x y, maxBounds x y)] }
+storeRange (SingletonRange x) =
+   RM { largestLowerBound = Nothing, largestUpperBound = Nothing
+      , spanRanges = [(Bound x Inclusive, Bound x Inclusive)] }
 
 storeRanges :: (Ord a) => RangeMerge a -> [Range a] -> RangeMerge a
 storeRanges start ranges = foldr unionRangeMerges start (map storeRange ranges)
@@ -62,7 +68,6 @@ exportRangeMerge (RM lb up spans) = putUpperBound up ++ putSpans spans ++ putLow
          then SingletonRange xv
          else SpanRange x y
 
-{-# RULES "load/export" [1] forall x. loadRanges (exportRangeMerge x) = x #-}
 
 intersectSpansRM :: (Ord a) => RangeMerge a -> RangeMerge a -> RangeMerge a
 intersectSpansRM one two = RM Nothing Nothing newSpans
@@ -141,7 +146,9 @@ unionRangeMerges _ IRM = IRM
 unionRangeMerges one two = infiniteCheck filterTwo
    where
       filterOne = foldr filterLowerBound boundedRM (unionSpans sortedSpans)
-      filterTwo = foldr filterUpperBound (filterOne { spanRanges = [] }) (spanRanges filterOne)
+      filterTwo = case filterOne of
+         IRM -> IRM
+         rm  -> foldr filterUpperBound (rm { spanRanges = [] }) (spanRanges rm)
 
       infiniteCheck :: (Ord a) => RangeMerge a -> RangeMerge a
       infiniteCheck IRM = IRM
@@ -195,31 +202,31 @@ invertRM (RM Nothing Nothing []) = IRM
 invertRM (RM (Just lower) Nothing []) = RM Nothing (Just . invertBound $ lower) []
 invertRM (RM Nothing (Just upper) []) = RM (Just . invertBound $ upper) Nothing []
 invertRM (RM (Just lower) (Just upper) []) = RM Nothing Nothing [(invertBound upper, invertBound lower)]
-invertRM rm = RM
+invertRM (RM lb ub spans@(firstSpan : _)) = RM
    { largestUpperBound = newUpperBound
    , largestLowerBound = newLowerBound
    , spanRanges = upperSpan ++ betweenSpans ++ lowerSpan
    }
    where
-      newLowerValue = invertBound . snd . last . spanRanges $ rm
-      newUpperValue = invertBound . fst . head . spanRanges $ rm
+      newUpperValue = invertBound . fst $ firstSpan
+      newLowerValue = invertBound . snd . last $ spans
 
-      newUpperBound = case largestUpperBound rm of
+      newUpperBound = case ub of
          Just _ -> Nothing
          Nothing -> Just newUpperValue
 
-      newLowerBound = case largestLowerBound rm of
+      newLowerBound = case lb of
          Just _ -> Nothing
          Nothing -> Just newLowerValue
 
-      upperSpan = case largestUpperBound rm of
+      upperSpan = case ub of
          Nothing -> []
          Just upper -> [(invertBound upper, newUpperValue)]
-      lowerSpan = case largestLowerBound rm of
+      lowerSpan = case lb of
          Nothing -> []
          Just lower -> [(newLowerValue, invertBound lower)]
 
-      betweenSpans = invertSpans . spanRanges $ rm
+      betweenSpans = invertSpans spans
 
 joinRM :: (Eq a, Enum a) => RangeMerge a -> RangeMerge a
 joinRM o@(RM _ _ []) = o

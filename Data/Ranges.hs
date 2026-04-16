@@ -466,7 +466,7 @@ fromRanges = takeEvenly . fmap fromRange . unRanges
     fromRange (UpperBoundRange (Bound x xType)) =
       iterate pred (if xType == Inclusive then x else pred x)
     fromRange InfiniteRange =
-      zero : takeEvenly [tail (iterate succ zero), tail (iterate pred zero)]
+      zero : takeEvenly [iterate succ (succ zero), iterate pred (pred zero)]
       where zero = toEnum 0
 
 -- | Join adjacent ranges that are contiguous for 'Enum' types.
