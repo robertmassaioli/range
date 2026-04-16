@@ -17,6 +17,7 @@ import Test.RangeMerge
 import Test.RangeLaws
 import Test.RangeParser
 import Test.RangeOrd
+import Test.RangeBounds
 import Test.Generators ()
 
 data UnequalPair a = UnequalPair (a, a)
@@ -95,6 +96,7 @@ tests =
    ++ rangeLawTestCases
    ++ rangeParserTestCases
    ++ rangeOrdTestCases
+   ++ rangeBoundsTestCases
 
 main :: IO ()
 main = defaultMain tests

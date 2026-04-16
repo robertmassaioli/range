@@ -10,6 +10,9 @@ import Control.Monad (liftM)
 import Data.Ranges
 import qualified Data.Range.Algebra as Alg
 
+instance Arbitrary BoundType where
+   arbitrary = elements [Inclusive, Exclusive]
+
 instance (Num a, Integral a, Ord a, Enum a) => Arbitrary (Range a) where
    arbitrary = oneof
       [ generateSingleton
@@ -21,11 +24,19 @@ instance (Num a, Integral a, Ord a, Enum a) => Arbitrary (Range a) where
       where
          generateSingleton = liftM SingletonRange arbitrarySizedIntegral
          generateSpan = do
-            first <- arbitrarySizedIntegral
-            second <- arbitrarySizedIntegral `suchThat` (> first)
-            return $ SpanRange (Bound first Inclusive) (Bound second Inclusive)
-         generateLowerBound = liftM (\x -> LowerBoundRange (Bound x Inclusive)) arbitrarySizedIntegral
-         generateUpperBound = liftM (\x -> UpperBoundRange (Bound x Inclusive)) arbitrarySizedIntegral
+            first   <- arbitrarySizedIntegral
+            second  <- arbitrarySizedIntegral `suchThat` (> first)
+            loBound <- arbitrary
+            hiBound <- arbitrary
+            return $ SpanRange (Bound first loBound) (Bound second hiBound)
+         generateLowerBound = do
+            x     <- arbitrarySizedIntegral
+            bound <- arbitrary
+            return $ LowerBoundRange (Bound x bound)
+         generateUpperBound = do
+            x     <- arbitrarySizedIntegral
+            bound <- arbitrary
+            return $ UpperBoundRange (Bound x bound)
          generateInfiniteRange :: Gen (Range a)
          generateInfiniteRange = return InfiniteRange
 

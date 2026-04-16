@@ -95,6 +95,7 @@ Test-Suite test-range
                   , Test.RangeLaws
                   , Test.RangeParser
                   , Test.RangeOrd
+                  , Test.RangeBounds
                   , Test.Generators
                   -- library modules accessed directly by test internals:
                   , Data.Ranges
