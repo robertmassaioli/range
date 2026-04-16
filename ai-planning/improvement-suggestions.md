@@ -19,6 +19,8 @@ Implemented in `Test/RangeLaws.hs` with 15 QuickCheck properties covering idempo
 
 In `Test/Range.hs:70-71`, the span generator always uses `+=+` (inclusive/inclusive). `Exclusive` bounds are never exercised in any generated `SpanRange`. This means properties involving exclusive bounds are only tested at the `RangeMerge` level (via `maybeBound` in `RangeMerge.hs`), not through the public API.
 
+Implementation plan: see `ai-planning/arbitrary-exclusive-bounds-proposal.md`.
+
 ## 3. No benchmark suite **[DONE]**
 
 The README prominently advertises performance as the primary value proposition (with a GHCi timing comparison in the docs), but there's no `criterion` or `tasty-bench` benchmark suite in the cabal file. Given that performance is a selling point, a suite testing `inRanges` on large lists of ranges, `mergeRanges` on pathological inputs, and `intersection` on dense overlapping ranges would both protect against regressions and substantiate the performance claims.
