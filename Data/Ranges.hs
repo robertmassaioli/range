@@ -101,7 +101,7 @@ import Control.DeepSeq (NFData, rnf)
 import Data.Range.Data
 import Data.Range.Util
   ( againstLowerBound, againstUpperBound, boundIsBetween, boundsOverlapType
-  , invertBound, pointJoinType, takeEvenly
+  , invertBound, takeEvenly
   )
 import Data.Range.RangeInternal
   ( loadRanges, exportRangeMerge, joinRM, buildSpanQuery
@@ -120,13 +120,29 @@ buildQuery rs = case loadRanges rs of
   IRM            -> const True
   RM lb ub spans -> buildSpanQuery lb ub spans
 
+-- | Build an O(1) "above all ranges" predicate from the canonical range list.
+-- The last element has the largest upper bound; if @a@ is above it, it is
+-- above every range. If the last element is a 'LowerBoundRange' or
+-- 'InfiniteRange', nothing can be above it, so the predicate returns 'False'.
+buildAboveQuery :: Ord a => [Range a] -> a -> Bool
+buildAboveQuery []  = const True
+buildAboveQuery rs  = aboveRange (last rs)
+
+-- | Build an O(1) "below all ranges" predicate from the canonical range list.
+-- The first element has the smallest lower bound; if @a@ is below it, it is
+-- below every range. If the first element is an 'UpperBoundRange' or
+-- 'InfiniteRange', nothing can be below it, so the predicate returns 'False'.
+buildBelowQuery :: Ord a => [Range a] -> a -> Bool
+buildBelowQuery []    = const True
+buildBelowQuery (r:_) = belowRange r
+
 -- | Smart constructor. Canonicalises the range list and pre-builds the
 -- membership predicate. Every 'Ranges' value in this module is produced
 -- through this function.
 mkRanges :: Ord a => [Range a] -> Ranges a
 mkRanges xs =
   let canonical = Alg.eval $ Alg.union (Alg.const []) (Alg.const xs)
-  in Ranges canonical (buildQuery canonical)
+  in Ranges canonical (buildQuery canonical) (buildAboveQuery canonical) (buildBelowQuery canonical)
 
 -- ---------------------------------------------------------------------------
 -- The Ranges type
@@ -143,8 +159,8 @@ mkRanges xs =
 -- instead of 'Range', so they compose naturally without wrapping.
 
 -- | A set of ranges represented as a merged, canonical list of
--- non-overlapping 'Range' values, with a pre-built O(log n) membership
--- predicate.
+-- non-overlapping 'Range' values, with pre-built O(log n) membership,
+-- O(1) above, and O(1) below predicates.
 --
 -- Construct values with the operators ('+=+', 'lbi', etc.) or with
 -- 'mergeRanges'. Combine with @('<>')@ or 'mconcat'.
@@ -165,6 +181,8 @@ mkRanges xs =
 data Ranges a = Ranges
   { unRanges     :: [Range a]  -- ^ The canonical (sorted, non-overlapping) list.
   , _rangesQuery :: a -> Bool  -- ^ Cached O(log n) membership predicate.
+  , _aboveQuery  :: a -> Bool  -- ^ Cached O(1) "above all ranges" predicate.
+  , _belowQuery  :: a -> Bool  -- ^ Cached O(1) "below all ranges" predicate.
   }
 
 -- | Two 'Ranges' values are equal when their canonical range lists are equal.
@@ -355,21 +373,29 @@ inRanges = _rangesQuery
 
 -- | Returns 'True' if the value is strictly above all of the given ranges.
 --
+-- This predicate is O(1): the answer is determined by the last element of the
+-- canonical range list (which has the largest upper bound), cached at
+-- construction time.
+--
 -- >>> aboveRanges (1 +=+ 5 <> 10 +=+ 15 :: Ranges Integer) 20
 -- True
 -- >>> aboveRanges (1 +=+ 5 <> lbi 10 :: Ranges Integer) 20
 -- False
 aboveRanges :: Ord a => Ranges a -> a -> Bool
-aboveRanges r a = all (`aboveRange` a) (unRanges r)
+aboveRanges = _aboveQuery
 
 -- | Returns 'True' if the value is strictly below all of the given ranges.
+--
+-- This predicate is O(1): the answer is determined by the first element of the
+-- canonical range list (which has the smallest lower bound), cached at
+-- construction time.
 --
 -- >>> belowRanges (5 +=+ 10 <> 20 +=+ 30 :: Ranges Integer) 1
 -- True
 -- >>> belowRanges (ubi 10 <> 20 +=+ 30 :: Ranges Integer) 1
 -- False
 belowRanges :: Ord a => Ranges a -> a -> Bool
-belowRanges r a = all (`belowRange` a) (unRanges r)
+belowRanges = _belowQuery
 
 -- ---------------------------------------------------------------------------
 -- Set operations
