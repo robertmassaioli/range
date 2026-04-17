@@ -52,6 +52,10 @@ main = do
             ++ showVersion (makeVersion [1,0])
             ++ " is below all ranges: "
             ++ show (belowRanges compatible (makeVersion [0,9]))
+    putStrLn $ "anything above "
+            ++ showVersion (makeVersion [2,4])
+            ++ " is above all ranges: "
+            ++ show (aboveRanges compatible (makeVersion [3,0]))
 ```
 
 Expected output:
@@ -64,6 +68,7 @@ Expected output:
 [True]  v2.3   — in the 2.1–2.4 compatible band
 [False] v3.0   — above all compatible ranges
 anything below 1.0 is below all ranges: True
+anything above 2.4 is above all ranges: True
 ```
 
 For a more complete example in a real program, see [splitter][1].
