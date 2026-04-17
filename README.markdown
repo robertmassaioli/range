@@ -30,10 +30,11 @@ module Main where
 import Data.Ranges
 import Data.Version (Version, makeVersion, showVersion)
 
--- Versions compatible with our library: 1.x and 2.1–2.4 (inclusive).
--- The gap at 2.0 reflects a known-bad release.
+-- Versions compatible with our library: [1.0, 2.0) and [2.1, 2.4].
+-- The exclusive upper bound on the first range neatly captures all 1.x
+-- versions. The gap at 2.0 reflects a known-bad release.
 compatible :: Ranges Version
-compatible = makeVersion [1,0] +=+ makeVersion [1,9,99]
+compatible = makeVersion [1,0] +=* makeVersion [2,0]
           <> makeVersion [2,1] +=+ makeVersion [2,4]
 
 check :: Version -> String -> IO ()
