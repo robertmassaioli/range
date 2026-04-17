@@ -44,6 +44,7 @@ main :: IO ()
 main = do
     check (makeVersion [1,5])    "v1.5   — in the 1.x compatible band"
     check (makeVersion [2,0])    "v2.0   — in the gap, NOT compatible"
+    check (makeVersion [2,0,5])  "v2.0.5 — still in the gap, NOT compatible"
     check (makeVersion [2,3])    "v2.3   — in the 2.1–2.4 compatible band"
     check (makeVersion [3,0])    "v3.0   — above all compatible ranges"
     putStrLn $ "anything below "
@@ -57,6 +58,7 @@ Expected output:
 ```
 [True]  v1.5   — in the 1.x compatible band
 [False] v2.0   — in the gap, NOT compatible
+[False] v2.0.5 — still in the gap, NOT compatible
 [True]  v2.3   — in the 2.1–2.4 compatible band
 [False] v3.0   — above all compatible ranges
 anything below 1.0 is below all ranges: True
