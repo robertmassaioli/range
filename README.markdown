@@ -21,21 +21,44 @@ filtering large lists. `inRanges` runs in O(log n), and `aboveRanges` /
 
 ## Example
 
+The library works on any `Ord` type. Here it checks software version compatibility
+using `Data.Version` from `base`:
+
 ```haskell
 module Main where
 
 import Data.Ranges
+import Data.Version (Version, makeVersion, showVersion)
 
-putStatus :: Bool -> String -> IO ()
-putStatus result label = putStrLn $ "[" ++ show result ++ "] " ++ label
+-- Versions compatible with our library: 1.x and 2.1–2.4 (inclusive).
+-- The gap at 2.0 reflects a known-bad release.
+compatible :: Ranges Version
+compatible = makeVersion [1,0] +=+ makeVersion [1,9,99]
+          <> makeVersion [2,1] +=+ makeVersion [2,4]
+
+check :: Version -> String -> IO ()
+check v label = putStrLn $ "[" ++ show (inRanges compatible v) ++ "] " ++ label
 
 main :: IO ()
 main = do
-    inRanges (SingletonRange 4)                 4       `putStatus` "Singleton match"
-    inRanges (0 +=+ 10)                         7       `putStatus` "Value in span"
-    inRanges (lbi 80)                           12345   `putStatus` "Value in lower-bounded range"
-    inRanges inf                                8287423 `putStatus` "Value in infinite range"
-    inRanges (lbi 50 <> 1 +=+ 30 :: Ranges Int) 44     `putStatus` "NOT in composite range (expect False)"
+    check (makeVersion [1,5])    "v1.5   — in the 1.x compatible band"
+    check (makeVersion [2,0])    "v2.0   — in the gap, NOT compatible"
+    check (makeVersion [2,3])    "v2.3   — in the 2.1–2.4 compatible band"
+    check (makeVersion [3,0])    "v3.0   — above all compatible ranges"
+    putStrLn $ "anything below "
+            ++ showVersion (makeVersion [1,0])
+            ++ " is below all ranges: "
+            ++ show (belowRanges compatible (makeVersion [0,9]))
+```
+
+Expected output:
+
+```
+[True]  v1.5   — in the 1.x compatible band
+[False] v2.0   — in the gap, NOT compatible
+[True]  v2.3   — in the 2.1–2.4 compatible band
+[False] v3.0   — above all compatible ranges
+anything below 1.0 is below all ranges: True
 ```
 
 For a more complete example in a real program, see [splitter][1].
